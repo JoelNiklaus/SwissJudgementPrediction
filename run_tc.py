@@ -16,12 +16,16 @@
 # limitations under the License.
 """ Finetuning multi-lingual models on XNLI (e.g. Bert, DistilBERT, XLM).
     Adapted from `examples/text-classification/run_glue.py`"""
-
+import faulthandler
+import json
 import logging
 import os
 import random
 import sys
 from dataclasses import dataclass, field
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
+    classification_report
+from sklearn.preprocessing import MultiLabelBinarizer
 from typing import Optional
 
 import numpy as np
@@ -38,19 +42,23 @@ from transformers import (
     Trainer,
     TrainingArguments,
     default_data_collator,
-    set_seed,
+    set_seed, EarlyStoppingCallback,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
-
+os.environ['TOKENIZERS_PARALLELISM'] = "True"
 os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
+os.environ['WANDB_MODE'] = "online"
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.6.0.dev0")
 
 logger = logging.getLogger(__name__)
 
+faulthandler.enable()
+
+# TODO for imbalanced dataset try different loss function: like macro averaged f1
 
 @dataclass
 class DataTrainingArguments:
@@ -66,7 +74,7 @@ class DataTrainingArguments:
         default=128,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
-            "than this will be truncated, sequences shorter will be padded."
+                    "than this will be truncated, sequences shorter will be padded."
         },
     )
     overwrite_cache: bool = field(
@@ -76,28 +84,28 @@ class DataTrainingArguments:
         default=True,
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
-            "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+                    "If False, will pad the samples dynamically when batching to the maximum length in the batch."
         },
     )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
+                    "value if set."
         },
     )
     max_eval_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
-            "value if set."
+                    "value if set."
         },
     )
     max_predict_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of prediction examples to this "
-            "value if set."
+                    "value if set."
         },
     )
     server_ip: Optional[str] = field(default=None, metadata={"help": "For distant debugging."})
@@ -145,7 +153,18 @@ class ModelArguments:
         default=False,
         metadata={
             "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-            "with private models)."
+                    "with private models)."
+        },
+    )
+    prediction_threshold: int = field(
+        default=0,
+        metadata={
+            "help": "Used in multilabel classification for determining when a given label is assigned. "
+                    "This is normally 0 when using the tanh function in the output layer "
+                    "and 0.5 if the sigmoid function is used."
+                    "This is a hyperparameter which can additionally be tuned to improve the "
+                    "multilabel classification performance as discussed here: "
+                    "https://www.csie.ntu.edu.tw/~cjlin/papers/threshold.pdf"
         },
     )
 
@@ -208,26 +227,24 @@ def main():
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-    # Downloading and loading xnli dataset from the hub.
     if training_args.do_train:
-        if model_args.train_language is None:
-            train_dataset = load_dataset("xnli", model_args.language, split="train", cache_dir=model_args.cache_dir)
-        else:
-            train_dataset = load_dataset(
-                "xnli", model_args.train_language, split="train", cache_dir=model_args.cache_dir
-            )
-        label_list = train_dataset.features["label"].names
+        train_dataset = load_dataset("csv", data_files={"train": 'data/train.csv'})['train']
 
     if training_args.do_eval:
-        eval_dataset = load_dataset("xnli", model_args.language, split="validation", cache_dir=model_args.cache_dir)
-        label_list = eval_dataset.features["label"].names
+        eval_dataset = load_dataset("csv", data_files={"validation": 'data/val.csv'})['validation']
 
     if training_args.do_predict:
-        predict_dataset = load_dataset("xnli", model_args.language, split="test", cache_dir=model_args.cache_dir)
-        label_list = predict_dataset.features["label"].names
+        predict_dataset = load_dataset("csv", data_files={"test": 'data/test.csv'})['test']
 
     # Labels
+    with open('data/labels.json', 'r') as f:
+        label_dict = json.load(f)
+        label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
+        label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
+        label_list = list(label_dict["label2id"].keys())
     num_labels = len(label_list)
+
+    mlb = MultiLabelBinarizer().fit([label_list])
 
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
@@ -235,7 +252,10 @@ def main():
     config = AutoConfig.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         num_labels=num_labels,
-        finetuning_task="xnli",
+        id2label=label_dict["id2label"],
+        label2id=label_dict["label2id"],
+        finetuning_task="mltc",
+        problem_type="multi_label_classification",
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
@@ -265,15 +285,11 @@ def main():
         # We will pad later, dynamically at batch creation, to the max sequence length in each batch
         padding = False
 
-    def preprocess_function(examples):
+    def preprocess_function(batch):
         # Tokenize the texts
-        return tokenizer(
-            examples["premise"],
-            examples["hypothesis"],
-            padding=padding,
-            max_length=data_args.max_seq_length,
-            truncation=True,
-        )
+        tokenized = tokenizer(batch["text"], padding=padding, max_length=data_args.max_seq_length, truncation=True, )
+        tokenized["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
+        return tokenized
 
     if training_args.do_train:
         if data_args.max_train_samples is not None:
@@ -282,9 +298,10 @@ def main():
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
+            remove_columns=train_dataset.column_names,
         )
-        # Log a few random samples from the training set:
-        for index in random.sample(range(len(train_dataset)), 3):
+        # Log a random sample from the training set:
+        for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     if training_args.do_eval:
@@ -294,6 +311,7 @@ def main():
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
+            remove_columns=eval_dataset.column_names,
         )
 
     if training_args.do_predict:
@@ -303,17 +321,29 @@ def main():
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
+            remove_columns=predict_dataset.column_names,
         )
 
-    # Get the metric function
-    metric = load_metric("xnli")
+    def preds_to_bools(predictions):
+        return [pl > model_args.prediction_threshold for pl in predictions]
+
+    def labels_to_bools(labels):
+        return [tl == 1 for tl in labels]
 
     # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
     # predictions and label_ids field) and has to return a dictionary string to float.
     def compute_metrics(p: EvalPrediction):
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        preds = np.argmax(preds, axis=1)
-        return metric.compute(predictions=preds, references=p.label_ids)
+        pred_bools = preds_to_bools(preds)
+        true_bools = labels_to_bools(p.label_ids)
+        accuracy = accuracy_score(true_bools, pred_bools)
+        precision, recall, f1_score, _ = precision_recall_fscore_support(true_bools, pred_bools, average='micro')
+        return {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1_score,
+        }
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
     if data_args.pad_to_max_length:
@@ -332,6 +362,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        # callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
     )
 
     # Training
@@ -368,7 +399,7 @@ def main():
     # Prediction
     if training_args.do_predict:
         logger.info("*** Predict ***")
-        predictions, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="predict")
+        preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="predict")
 
         max_predict_samples = (
             data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
@@ -378,14 +409,31 @@ def main():
         trainer.log_metrics("predict", metrics)
         trainer.save_metrics("predict", metrics)
 
-        predictions = np.argmax(predictions, axis=1)
+        pred_bools, true_bools = preds_to_bools(preds), preds_to_bools(labels)
         output_predict_file = os.path.join(training_args.output_dir, "predictions.txt")
+        output_report_file = os.path.join(training_args.output_dir, "prediction_report.txt")
         if trainer.is_world_process_zero():
+            # write predictions file
             with open(output_predict_file, "w") as writer:
                 writer.write("index\tprediction\n")
-                for index, item in enumerate(predictions):
-                    item = label_list[item]
-                    writer.write(f"{index}\t{item}\n")
+                for index, pred in enumerate(pred_bools):
+                    pred_strings = mlb.inverse_transform(np.array([pred]))[0]
+                    writer.write(f"{index}\t{pred_strings}\n")
+
+            # write report file
+            with open(output_report_file, "w") as writer:
+                writer.write("Multilabel Confusion Matrix\n")
+                writer.write("=" * 75 + "\n\n")
+                writer.write("reading help:\nTN FP\nFN TP\n\n")
+                matrices = multilabel_confusion_matrix(true_bools, pred_bools)
+                for i in range(len(label_list)):
+                    writer.write(f"{label_list[i]}\n{str(matrices[i])}\n")
+                writer.write("\n" * 3)
+
+                writer.write("Classification Report\n")
+                writer.write("=" * 75 + "\n\n")
+                report = classification_report(true_bools, pred_bools, target_names=label_list)
+                writer.write(str(report))
 
 
 if __name__ == "__main__":
