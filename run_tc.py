@@ -177,6 +177,10 @@ def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # for better charts when we have a group run with multiple seeds
+    # TODO check that this works as intended: https://docs.wandb.ai/guides/track/advanced/grouping
+    os.environ["WANDB_RUN_GROUP"] = training_args.run_name
+
     # Detecting last checkpoint.
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
@@ -409,7 +413,7 @@ def main():
         trainer.log_metrics("predict", metrics)
         trainer.save_metrics("predict", metrics)
 
-        pred_bools, true_bools = preds_to_bools(preds), preds_to_bools(labels)
+        pred_bools, true_bools = preds_to_bools(preds), labels_to_bools(labels)
         output_predict_file = os.path.join(training_args.output_dir, "predictions.txt")
         output_report_file = os.path.join(training_args.output_dir, "prediction_report.txt")
         if trainer.is_world_process_zero():

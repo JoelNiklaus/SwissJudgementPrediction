@@ -8,9 +8,10 @@
 #SBATCH --partition=gpu-invest
 #SBATCH --gres=gpu:rtx3090:1
 #SBATCH --time=24:00:00
+#SBATCH --array=1-5%1
 
 # Put your code below this line
-bash run.sh > run.out
+bash run.sh ${SLURM_ARRAY_TASK_ID} > run.out
 
 # IMPORTANT:
 # Run with                  sbatch run_ubelix_job.sl
