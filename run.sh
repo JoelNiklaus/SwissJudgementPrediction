@@ -28,6 +28,7 @@ MAX_SEQ_LENGTH=512           # how many tokens to consider as input
 NUM_EPOCHS=5
 
 python run_tc.py \
+  --problem_type "single_label_classification" \
   --model_name_or_path $MODEL_NAME \
   --run_name $MODEL_NAME-$1 \
   --output_dir $DIR \

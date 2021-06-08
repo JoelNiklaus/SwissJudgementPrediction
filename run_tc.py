@@ -14,7 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Finetuning multi-lingual models on XNLI (e.g. Bert, DistilBERT, XLM).
+""" Finetuning multi-lingual models on SJP (e.g. Bert, DistilBERT, XLM).
     Adapted from `examples/text-classification/run_glue.py`"""
 import faulthandler
 import json
@@ -24,7 +24,7 @@ import random
 import sys
 from dataclasses import dataclass, field
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
-    classification_report
+    classification_report, confusion_matrix
 from sklearn.preprocessing import MultiLabelBinarizer
 from typing import Optional
 
@@ -58,7 +58,6 @@ logger = logging.getLogger(__name__)
 
 faulthandler.enable()
 
-# TODO for imbalanced dataset try different loss function: like macro averaged f1
 
 @dataclass
 class DataTrainingArguments:
@@ -156,6 +155,13 @@ class ModelArguments:
                     "with private models)."
         },
     )
+    problem_type: str = field(
+        default="single_label_classification",
+        metadata={
+            "help": "Problem type for XxxForSequenceClassification models. "
+                    "Can be one of (\"regression\", \"single_label_classification\", \"multi_label_classification\")."
+        },
+    )
     prediction_threshold: int = field(
         default=0,
         metadata={
@@ -178,7 +184,6 @@ def main():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     # for better charts when we have a group run with multiple seeds
-    # TODO check that this works as intended: https://docs.wandb.ai/guides/track/advanced/grouping
     os.environ["WANDB_RUN_GROUP"] = training_args.run_name
 
     # Detecting last checkpoint.
@@ -248,7 +253,8 @@ def main():
         label_list = list(label_dict["label2id"].keys())
     num_labels = len(label_list)
 
-    mlb = MultiLabelBinarizer().fit([label_list])
+    if model_args.problem_type == 'multi_label_classification':
+        mlb = MultiLabelBinarizer().fit([label_list])
 
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
@@ -258,8 +264,8 @@ def main():
         num_labels=num_labels,
         id2label=label_dict["id2label"],
         label2id=label_dict["label2id"],
-        finetuning_task="mltc",
-        problem_type="multi_label_classification",
+        finetuning_task="text-classification",
+        problem_type=model_args.problem_type,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
@@ -292,7 +298,13 @@ def main():
     def preprocess_function(batch):
         # Tokenize the texts
         tokenized = tokenizer(batch["text"], padding=padding, max_length=data_args.max_seq_length, truncation=True, )
-        tokenized["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
+
+        # Map labels to IDs
+        if model_args.problem_type == 'multi_label_classification':
+            tokenized["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
+        if model_args.problem_type == 'single_label_classification':
+            if label_dict["label2id"] is not None and "label" in batch:
+                tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
         return tokenized
 
     if training_args.do_train:
@@ -328,20 +340,27 @@ def main():
             remove_columns=predict_dataset.column_names,
         )
 
-    def preds_to_bools(predictions):
-        return [pl > model_args.prediction_threshold for pl in predictions]
-
     def labels_to_bools(labels):
         return [tl == 1 for tl in labels]
+
+    def preds_to_bools(preds):
+        return [pl > model_args.prediction_threshold for pl in preds]
 
     # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
     # predictions and label_ids field) and has to return a dictionary string to float.
     def compute_metrics(p: EvalPrediction):
+        labels = p.label_ids
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        pred_bools = preds_to_bools(preds)
-        true_bools = labels_to_bools(p.label_ids)
-        accuracy = accuracy_score(true_bools, pred_bools)
-        precision, recall, f1_score, _ = precision_recall_fscore_support(true_bools, pred_bools, average='micro')
+        if model_args.problem_type == 'multi_label_classification':
+            # for multi_label_classification we need boolean arrays for each example
+            labels = labels_to_bools(labels)
+            preds = preds_to_bools(preds)
+        if model_args.problem_type == 'single_label_classification':
+            preds = np.argmax(preds, axis=1)
+
+        accuracy = accuracy_score(labels, preds)
+        # weighted averaging is a better evaluation metric for imbalanced label distributions
+        precision, recall, f1_score, _ = precision_recall_fscore_support(labels, preds, average='weighted')
         return {
             'accuracy': accuracy,
             'precision': precision,
@@ -413,30 +432,42 @@ def main():
         trainer.log_metrics("predict", metrics)
         trainer.save_metrics("predict", metrics)
 
-        pred_bools, true_bools = preds_to_bools(preds), labels_to_bools(labels)
+        if model_args.problem_type == 'multi_label_classification':
+            preds, labels = preds_to_bools(preds), labels_to_bools(labels)
+        if model_args.problem_type == 'single_label_classification':
+            preds = np.argmax(preds, axis=1)
         output_predict_file = os.path.join(training_args.output_dir, "predictions.txt")
         output_report_file = os.path.join(training_args.output_dir, "prediction_report.txt")
         if trainer.is_world_process_zero():
             # write predictions file
             with open(output_predict_file, "w") as writer:
                 writer.write("index\tprediction\n")
-                for index, pred in enumerate(pred_bools):
-                    pred_strings = mlb.inverse_transform(np.array([pred]))[0]
+                for index, pred in enumerate(preds):
+                    if model_args.problem_type == 'multi_label_classification':
+                        pred_strings = mlb.inverse_transform(np.array([pred]))[0]
+                    if model_args.problem_type == 'single_label_classification':
+                        pred_strings = [label_dict["id2label"][pred]]
                     writer.write(f"{index}\t{pred_strings}\n")
 
             # write report file
             with open(output_report_file, "w") as writer:
-                writer.write("Multilabel Confusion Matrix\n")
+                if model_args.problem_type == 'multi_label_classification':
+                    title = "Multilabel Confusion Matrix\n"
+                    matrices = multilabel_confusion_matrix(labels, preds)
+                if model_args.problem_type == 'single_label_classification':
+                    title = "Singlelabel Confusion Matrix\n"
+                    matrices = confusion_matrix(labels, preds)
+
+                writer.write(title)
                 writer.write("=" * 75 + "\n\n")
                 writer.write("reading help:\nTN FP\nFN TP\n\n")
-                matrices = multilabel_confusion_matrix(true_bools, pred_bools)
-                for i in range(len(label_list)):
+                for i in range(len(matrices)):
                     writer.write(f"{label_list[i]}\n{str(matrices[i])}\n")
                 writer.write("\n" * 3)
 
                 writer.write("Classification Report\n")
                 writer.write("=" * 75 + "\n\n")
-                report = classification_report(true_bools, pred_bools, target_names=label_list)
+                report = classification_report(labels, preds, target_names=label_list)
                 writer.write(str(report))
 
 
