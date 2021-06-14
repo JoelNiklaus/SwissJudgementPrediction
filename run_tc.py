@@ -19,17 +19,18 @@
 import faulthandler
 import json
 import logging
+import math
 import os
 import random
 import sys
+
 from dataclasses import dataclass, field
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
     classification_report, confusion_matrix
 from sklearn.preprocessing import MultiLabelBinarizer
-from typing import Optional
 
 import numpy as np
-from datasets import load_dataset, load_metric
+from datasets import load_dataset
 
 import transformers
 from transformers import (
@@ -46,6 +47,9 @@ from transformers import (
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
+from typing import Optional
+
+from HierarchicalBert import HierarchicalBert
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
 os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
@@ -70,7 +74,7 @@ class DataTrainingArguments:
     """
 
     max_seq_length: Optional[int] = field(
-        default=128,
+        default=512,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
                     "than this will be truncated, sequences shorter will be padded."
@@ -119,6 +123,10 @@ class ModelArguments:
 
     model_name_or_path: str = field(
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    use_hierarchical_bert: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to use the hierarchical BERT model for handling long text inputs."}
     )
     language: str = field(
         default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None."}
@@ -287,6 +295,21 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
+    # enable HierarchicalBert
+    if model_args.use_hierarchical_bert:
+        model_max_seq_length = model.config.max_position_embeddings
+        max_segments = math.floor(data_args.max_seq_length / model_max_seq_length)
+
+        encoder = model.bert
+        print(training_args.device)
+        model.bert = HierarchicalBert(encoder,
+                                      max_segments=max_segments,
+                                      max_segment_length=model_max_seq_length,
+                                      cls_token_id=tokenizer.cls_token_id,
+                                      sep_token_id=tokenizer.sep_token_id,
+                                      device=training_args.device,
+                                      seg_encoder_type='lstm')
+
     # Preprocessing the datasets
     # Padding strategy
     if data_args.pad_to_max_length:
@@ -297,7 +320,14 @@ def main():
 
     def preprocess_function(batch):
         # Tokenize the texts
-        tokenized = tokenizer(batch["text"], padding=padding, max_length=data_args.max_seq_length, truncation=True, )
+        add_special_tokens = True
+        max_length = data_args.max_seq_length
+        if model_args.use_hierarchical_bert:
+            add_special_tokens = False  # because we split it internally and then add the special tokens ourselves
+            # we need to make space for adding the CLS and SEP token for each segment
+            max_length = max_length - max_segments * 2
+        tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
+                              max_length=max_length, add_special_tokens=add_special_tokens)
 
         # Map labels to IDs
         if model_args.problem_type == 'multi_label_classification':
@@ -423,6 +453,7 @@ def main():
     if training_args.do_predict:
         logger.info("*** Predict ***")
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="predict")
+        preds = preds[0] if isinstance(preds, tuple) else preds
 
         max_predict_samples = (
             data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
@@ -456,7 +487,7 @@ def main():
                     matrices = multilabel_confusion_matrix(labels, preds)
                 if model_args.problem_type == 'single_label_classification':
                     title = "Singlelabel Confusion Matrix\n"
-                    matrices = confusion_matrix(labels, preds)
+                    matrices = [confusion_matrix(labels, preds)]
 
                 writer.write(title)
                 writer.write("=" * 75 + "\n\n")
