@@ -306,7 +306,6 @@ def main():
         max_segments = math.floor(data_args.max_seq_length / model_max_seq_length)
 
         encoder = model.bert
-        print(training_args.device)
         model.bert = HierarchicalBert(encoder,
                                       max_segments=max_segments,
                                       max_segment_length=model_max_seq_length,
@@ -424,7 +423,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        # callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
     )
 
     # Training
