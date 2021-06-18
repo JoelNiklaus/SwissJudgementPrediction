@@ -23,16 +23,20 @@ class HierarchicalBert(nn.Module):
         self.hidden_size = encoder.config.hidden_size
         self.max_segments = max_segments
         self.max_segment_length = max_segment_length
-        if seg_encoder_type == "lstm":
-            self.seg_encoder = nn.LSTM(encoder.config.hidden_size, encoder.config.hidden_size,
-                                       bidirectional=True, num_layers=1, batch_first=True)
-        if seg_encoder_type == "transformer":
-            # TODO make this work too
-            self.seg_encoder = nn.Transformer(d_model=encoder.config.hidden_size).encoder
-        self.down_project = nn.Linear(in_features=2 * self.hidden_size, out_features=self.hidden_size)
         self.sep_token_id = sep_token_id
         self.cls_token_id = cls_token_id
         self.device = device
+        self.seg_encoder_type = seg_encoder_type
+        if self.seg_encoder_type == "lstm":
+            self.seg_encoder = nn.LSTM(encoder.config.hidden_size, encoder.config.hidden_size,
+                                       bidirectional=True, num_layers=1, batch_first=True)
+        if self.seg_encoder_type == "transformer":
+            # TODO make this work too
+            self.seg_encoder = nn.Transformer(d_model=encoder.config.hidden_size, num_encoder_layers=2).encoder
+        if self.seg_encoder_type == "linear":
+            # TODO make this work too
+            self.seg_encoder = nn.Linear(in_features=2 * self.hidden_size, out_features=self.hidden_size)
+        self.down_project = nn.Linear(in_features=2 * self.hidden_size, out_features=self.hidden_size)
 
     def forward(self,
                 input_ids=None,
@@ -84,15 +88,26 @@ class HierarchicalBert(nn.Module):
         # Gather CLS per segment --> (16, 10, 768)
         bert_outputs = bert_outputs[:, :, 0]
 
-        # LSTMs on top of segment encodings --> (16, 10, 1536)
-        lstms = self.seg_encoder(bert_outputs)
+        if self.seg_encoder_type == 'lstm':
+            # LSTMs on top of segment encodings --> (16, 10, 1536)
+            lstms = self.seg_encoder(bert_outputs)
 
-        # Reshape LSTM outputs to split directions -->  (16, 10, 2, 768)
-        reshaped_lstms = lstms[0].view(input_ids.size(0), self.max_segments, 2, self.hidden_size)
+            # Reshape LSTM outputs to split directions -->  (16, 10, 2, 768)
+            reshaped_lstms = lstms[0].view(input_ids.size(0), self.max_segments, 2, self.hidden_size)
 
-        # Concatenate of first and last hidden states -->  (16, 1536)
-        lstm_outputs = torch.cat((reshaped_lstms[:, -1, 0, :], reshaped_lstms[:, 0, 1, :]), -1)
+            # Concatenate of first and last hidden states -->  (16, 1536)
+            seg_encoder_outputs = torch.cat((reshaped_lstms[:, -1, 0, :], reshaped_lstms[:, 0, 1, :]), -1)
+
+        if self.seg_encoder_type == 'transformer':
+            # Transformer on top of segment encodings --> (16, 10, 768)
+            transformer = self.seg_encoder(bert_outputs)
+            # TODO make this work too
+
+        if self.seg_encoder_type == 'linear':
+            # Transformer on top of segment encodings --> (16, 10, 768)
+            transformer = self.seg_encoder(bert_outputs)
+            # TODO make this work too
 
         # Down-project -->  (16, 768)
-        outputs = self.down_project(lstm_outputs)
+        outputs = self.down_project(seg_encoder_outputs)
         return SimpleOutput(last_hidden_state=outputs, hidden_states=outputs)

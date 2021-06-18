@@ -18,7 +18,8 @@ model.bert = HierarchicalBert(encoder,
                               max_segment_length=512,
                               cls_token_id=tokenizer.cls_token_id,
                               sep_token_id=tokenizer.sep_token_id,
-                              device=device)
+                              device=device,
+                              seg_encoder_type='transformer')
 
 batch = tokenizer(['a ' * 1024] * 4, truncation=True, padding='max_length',
                   max_length=max_length, add_special_tokens=False, return_tensors='pt')
