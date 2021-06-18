@@ -24,6 +24,7 @@ import os
 import random
 import sys
 
+import wandb
 from dataclasses import dataclass, field
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
     classification_report, confusion_matrix
@@ -197,7 +198,7 @@ def main():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     # for better charts when we have a group run with multiple seeds
-    os.environ["WANDB_RUN_GROUP"] = training_args.run_name
+    os.environ["WANDB_RUN_GROUP"] = training_args.run_name[:-2]  # remove last two characters "-{seed}"
 
     # Detecting last checkpoint.
     last_checkpoint = None
@@ -454,16 +455,20 @@ def main():
     # Prediction
     if training_args.do_predict:
         logger.info("*** Predict ***")
-        preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="predict")
+        preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
         preds = preds[0] if isinstance(preds, tuple) else preds
 
         max_predict_samples = (
             data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
         )
-        metrics["predict_samples"] = min(max_predict_samples, len(predict_dataset))
+        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
 
-        trainer.log_metrics("predict", metrics)
-        trainer.save_metrics("predict", metrics)
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
+
+        # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
+        metrics = {k.replace("test_", "test/"): v for k, v in metrics.items() if "mem" not in k and k != "test_samples"}
+        wandb.log(metrics)  # log test metrics to wandb
 
         if model_args.problem_type == 'multi_label_classification':
             preds, labels = preds_to_bools(preds), labels_to_bools(labels)
