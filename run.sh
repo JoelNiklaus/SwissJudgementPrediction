@@ -46,6 +46,7 @@ TOTAL_BATCH_SIZE=64
 BATCH_SIZE=2        # depends on how much we can fit on the gpu
 MAX_SEQ_LENGTH=2048 # how many tokens to consider as input (hierarchical, 2048 is enough for facts)
 NUM_EPOCHS=5
+LR=1e-5 # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
@@ -62,6 +63,8 @@ python run_tc.py \
   --output_dir $DIR \
   --use_long_bert $LONG_BERT \
   --use_hierarchical_bert $HIER_BERT \
+  --learning_rate $LR \
+  --seed $1 \
   --do_train \
   --do_eval \
   --do_predict \
@@ -73,7 +76,6 @@ python run_tc.py \
   --eval_accumulation_steps $ACCUMULATION_STEPS \
   --per_device_train_batch_size $BATCH_SIZE \
   --per_device_eval_batch_size $BATCH_SIZE \
-  --seed $1 \
   --max_seq_length $MAX_SEQ_LENGTH \
   --num_train_epochs $NUM_EPOCHS \
   --load_best_model_at_end \
