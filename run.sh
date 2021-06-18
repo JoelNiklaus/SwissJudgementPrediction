@@ -46,7 +46,7 @@ TOTAL_BATCH_SIZE=64
 BATCH_SIZE=2        # depends on how much we can fit on the gpu
 MAX_SEQ_LENGTH=2048 # how many tokens to consider as input (hierarchical, 2048 is enough for facts)
 NUM_EPOCHS=5
-LR=1e-5 # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
+LR=5e-5 # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
@@ -68,7 +68,9 @@ python run_tc.py \
   --do_train \
   --do_eval \
   --do_predict \
+  --tune_hyperparameters False \
   --fp16 \
+  --group_by_length \
   --logging_strategy "steps" \
   --evaluation_strategy "epoch" \
   --save_strategy "epoch" \

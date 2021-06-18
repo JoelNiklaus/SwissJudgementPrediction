@@ -19,6 +19,7 @@ class HierarchicalBert(nn.Module):
     def __init__(self, encoder, max_segments, max_segment_length, cls_token_id, sep_token_id, device,
                  seg_encoder_type="lstm"):
         super(HierarchicalBert, self).__init__()
+        assert encoder.config.model_type == 'bert'
         self.encoder = encoder
         self.hidden_size = encoder.config.hidden_size
         self.max_segments = max_segments

@@ -74,7 +74,9 @@ class DataTrainingArguments:
     into argparse arguments to be able to specify them on
     the command line.
     """
-
+    tune_hyperparameters: bool = field(
+        default=False, metadata={"help": "Whether or not to tune the hyperparameters before training."}
+    )
     max_seq_length: Optional[int] = field(
         default=512,
         metadata={
@@ -293,32 +295,37 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
 
-    # enable HierarchicalBert
     if model_args.use_hierarchical_bert:
-        model_max_seq_length = model.config.max_position_embeddings
+        model_max_seq_length = config.max_position_embeddings
         max_segments = math.floor(data_args.max_seq_length / model_max_seq_length)
 
-        encoder = model.bert
-        model.bert = HierarchicalBert(encoder,
-                                      max_segments=max_segments,
-                                      max_segment_length=model_max_seq_length,
-                                      cls_token_id=tokenizer.cls_token_id,
-                                      sep_token_id=tokenizer.sep_token_id,
-                                      device=training_args.device,
-                                      seg_encoder_type='lstm')
+    def model_init():
+        model = AutoModelForSequenceClassification.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
 
-    # enable LongBert
-    if model_args.use_long_bert:
-        model = LongBert.resize_position_embeddings(model, data_args.max_seq_length)
+        # enable HierarchicalBert
+        if model_args.use_hierarchical_bert:
+            encoder = model.bert
+            model.bert = HierarchicalBert(encoder,
+                                          max_segments=max_segments,
+                                          max_segment_length=model_max_seq_length,
+                                          cls_token_id=tokenizer.cls_token_id,
+                                          sep_token_id=tokenizer.sep_token_id,
+                                          device=training_args.device,
+                                          seg_encoder_type='lstm')
+
+        # enable LongBert
+        if model_args.use_long_bert:
+            model = LongBert.resize_position_embeddings(model, data_args.max_seq_length)
+
+        return model
 
     # Preprocessing the datasets
     # Padding strategy
@@ -411,7 +418,7 @@ def main():
 
     # Initialize our Trainer
     trainer = Trainer(
-        model=model,
+        model_init=model_init,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
@@ -420,6 +427,20 @@ def main():
         data_collator=data_collator,
         callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
     )
+
+    # Hyperparameter Tuning
+    if data_args.tune_hyperparameters:
+        best_trial = trainer.hyperparameter_search(
+            direction="maximize",
+            backend="ray",
+            n_samples=10,  # number of trials
+            # Choose among many libraries:
+            # https://docs.ray.io/en/latest/tune/api_docs/suggestion.html
+            # search_alg=HyperOptSearch(),
+            # Choose among schedulers:
+            # https://docs.ray.io/en/latest/tune/api_docs/schedulers.html
+            # scheduler=AsyncHyperBand()
+        )
 
     # Training
     if training_args.do_train:

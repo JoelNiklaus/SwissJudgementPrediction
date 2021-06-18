@@ -2,6 +2,8 @@ import torch
 
 
 def resize_position_embeddings(model, max_length):
+    assert model.config.model_type == 'bert'
+
     old_max_length = model.config.max_position_embeddings
     assert max_length % old_max_length == 0
 
