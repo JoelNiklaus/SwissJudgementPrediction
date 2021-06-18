@@ -430,10 +430,16 @@ def main():
 
     # Hyperparameter Tuning
     if data_args.tune_hyperparameters:
+        def optuna_hp_space(trial):
+            return {
+                "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True)
+            }
+
         best_trial = trainer.hyperparameter_search(
+            hp_space=optuna_hp_space,
             direction="maximize",
-            backend="ray",
-            n_samples=10,  # number of trials
+            backend="optuna",  # ray/optuna
+            n_trials=10,  # number of trials
             # Choose among many libraries:
             # https://docs.ray.io/en/latest/tune/api_docs/suggestion.html
             # search_alg=HyperOptSearch(),
@@ -441,6 +447,9 @@ def main():
             # https://docs.ray.io/en/latest/tune/api_docs/schedulers.html
             # scheduler=AsyncHyperBand()
         )
+        logger.info(best_trial)
+        for n, v in best_trial.hyperparameters.items():
+            setattr(trainer.args, n, v)
 
     # Training
     if training_args.do_train:
@@ -474,7 +483,7 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     # Prediction
-    if training_args.do_predict:
+    if training_args.do_predict and not data_args.tune_hyperparameters:
         logger.info("*** Predict ***")
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
         preds = preds[0] if isinstance(preds, tuple) else preds
