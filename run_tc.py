@@ -272,12 +272,13 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
+    finetuning_task = "text-classification"
     config = AutoConfig.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         num_labels=num_labels,
         id2label=label_dict["id2label"],
         label2id=label_dict["label2id"],
-        finetuning_task="text-classification",
+        finetuning_task=finetuning_task,
         problem_type=model_args.problem_type,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
@@ -345,15 +346,18 @@ def main():
                 tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
         return tokenized
 
-    if training_args.do_train:
-        if data_args.max_train_samples is not None:
-            train_dataset = train_dataset.select(range(data_args.max_train_samples))
-        train_dataset = train_dataset.map(
+    def preprocess_dataset(dataset):
+        return dataset.map(
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
-            remove_columns=train_dataset.column_names,
+            remove_columns=dataset.column_names,
         )
+
+    if training_args.do_train:
+        if data_args.max_train_samples is not None:
+            train_dataset = train_dataset.select(range(data_args.max_train_samples))
+        train_dataset = preprocess_dataset(train_dataset)
         # Log a random sample from the training set:
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
@@ -361,22 +365,12 @@ def main():
     if training_args.do_eval:
         if data_args.max_eval_samples is not None:
             eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
-        eval_dataset = eval_dataset.map(
-            preprocess_function,
-            batched=True,
-            load_from_cache_file=not data_args.overwrite_cache,
-            remove_columns=eval_dataset.column_names,
-        )
+        eval_dataset = preprocess_dataset(eval_dataset)
 
     if training_args.do_predict:
         if data_args.max_predict_samples is not None:
             predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
-        predict_dataset = predict_dataset.map(
-            preprocess_function,
-            batched=True,
-            load_from_cache_file=not data_args.overwrite_cache,
-            remove_columns=predict_dataset.column_names,
-        )
+        predict_dataset = preprocess_dataset(predict_dataset)
 
     def labels_to_bools(labels):
         return [tl == 1 for tl in labels]
@@ -508,6 +502,16 @@ def main():
                 writer.write("=" * 75 + "\n\n")
                 report = classification_report(labels, preds, target_names=label_list)
                 writer.write(str(report))
+
+    if training_args.push_to_hub:
+        kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
+        if data_args.task_name is not None:
+            kwargs["language"] = "de"
+            kwargs["dataset_tags"] = "sjp"
+            kwargs["dataset_args"] = data_args.task_name
+            kwargs["dataset"] = f"SJP {data_args.task_name.upper()}"
+
+        trainer.push_to_hub(**kwargs)
 
 
 if __name__ == "__main__":
