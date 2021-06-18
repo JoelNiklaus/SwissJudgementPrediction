@@ -49,6 +49,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from typing import Optional
 
+import LongBert
 from HierarchicalBert import HierarchicalBert
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
@@ -127,6 +128,10 @@ class ModelArguments:
     use_hierarchical_bert: bool = field(
         default=False,
         metadata={"help": "Whether or not to use the hierarchical BERT model for handling long text inputs."}
+    )
+    use_long_bert: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to use the long BERT model for handling long text inputs."}
     )
     language: str = field(
         default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None."}
@@ -309,6 +314,10 @@ def main():
                                       sep_token_id=tokenizer.sep_token_id,
                                       device=training_args.device,
                                       seg_encoder_type='lstm')
+
+    # enable LongBert
+    if model_args.use_long_bert:
+        model = LongBert.resize_position_embeddings(model, data_args.max_seq_length)
 
     # Preprocessing the datasets
     # Padding strategy

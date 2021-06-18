@@ -36,6 +36,8 @@ MODEL_NAME="deepset/gbert-base"
 # BERT-large: 4?, 8?
 # HierBERT (input size 4096) Distilbert: 4?
 # HierBERT (input size 4096) BERT-base: 2
+# LongBERT (input size 2048) BERT-base: 1
+# LongBERT (input size 1024) BERT-base: 2
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 BASE_DIR=sjp
