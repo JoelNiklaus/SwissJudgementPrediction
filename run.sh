@@ -70,6 +70,8 @@ python run_tc.py \
   --do_predict \
   --tune_hyperparameters False \
   --fp16 \
+  --fp16_full_eval \
+  --label_smoothing_factor 0.1 \
   --group_by_length \
   --logging_strategy "steps" \
   --evaluation_strategy "epoch" \
