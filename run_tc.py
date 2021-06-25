@@ -35,6 +35,7 @@ from datasets import load_dataset
 
 import transformers
 from sklearn.utils import compute_class_weight
+import torch
 from torch.nn import CrossEntropyLoss
 from transformers import (
     AutoConfig,
@@ -419,7 +420,9 @@ def main():
         data_collator = None
 
     lbls = [item['label'] for item in train_dataset]
-    class_weight = compute_class_weight('balanced', np.unique(lbls), lbls)
+    # compute class weights based on label distribution
+    class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
+    class_weight = torch.tensor(class_weight, dtype=torch.float32, device=training_args.device)  # create tensor
 
     class CustomTrainer(Trainer):
         # adapt loss function to combat label imbalance
