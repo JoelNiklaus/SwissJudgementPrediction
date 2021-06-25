@@ -34,6 +34,8 @@ import numpy as np
 from datasets import load_dataset
 
 import transformers
+from sklearn.utils import compute_class_weight
+from torch.nn import CrossEntropyLoss
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -416,9 +418,23 @@ def main():
     else:
         data_collator = None
 
+    lbls = [item['label'] for item in train_dataset]
+    class_weight = compute_class_weight('balanced', np.unique(lbls), lbls)
+
+    class CustomTrainer(Trainer):
+        # adapt loss function to combat label imbalance
+        def compute_loss(self, model, inputs, return_outputs=False):
+            labels = inputs.pop("labels")
+            outputs = model(**inputs)
+            logits = outputs.logits
+            loss_fct = CrossEntropyLoss(weight=class_weight)
+            loss = loss_fct(logits, labels)
+            return (loss, outputs) if return_outputs else loss
+
     # Initialize our Trainer
-    trainer = Trainer(
-        model_init=model_init,
+    trainer = CustomTrainer(
+        model=model_init() if not data_args.tune_hyperparameters else None,
+        model_init=model_init if data_args.tune_hyperparameters else None,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
