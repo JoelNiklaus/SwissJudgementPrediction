@@ -36,6 +36,7 @@ from datasets import load_dataset
 import transformers
 from sklearn.utils import compute_class_weight
 import torch
+from torch.cuda.amp import autocast
 from torch.nn import CrossEntropyLoss
 from transformers import (
     AutoConfig,
@@ -431,7 +432,9 @@ def main():
             outputs = model(**inputs)
             logits = outputs.logits
             loss_fct = CrossEntropyLoss(weight=class_weight)
-            loss = loss_fct(logits, labels)
+            with autocast():
+                loss = loss_fct(logits, labels)
+                # loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
             return (loss, outputs) if return_outputs else loss
 
     # Initialize our Trainer
@@ -516,8 +519,10 @@ def main():
         trainer.save_metrics("test", metrics)
 
         # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
-        metrics = {k.replace("test_", "test/"): v for k, v in metrics.items() if "mem" not in k and k != "test_samples"}
-        wandb.log(metrics)  # log test metrics to wandb
+        if training_args.report_to in ["all", "wandb"]:
+            metrics = {k.replace("test_", "test/"): v for k, v in metrics.items()
+                       if "mem" not in k and k != "test_samples"}
+            wandb.log(metrics)  # log test metrics to wandb
 
         if model_args.problem_type == 'multi_label_classification':
             preds, labels = preds_to_bools(preds), labels_to_bools(labels)
