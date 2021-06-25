@@ -40,9 +40,11 @@ MODEL_NAME="deepset/gbert-base"
 # LongBERT (input size 1024) BERT-base: 4
 
 DEBUG=False
-[ "$DEBUG" == "True" ] && MAX_SAMPLES="100" || MAX_SAMPLES="None" # enable max samples in debug mode to make it run faster
-[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"             # disable fp16 in debug mode because it might run on cpu
-[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"             # disable wandb reporting in debug mode
+MAX_SAMPLES=100
+# enable max samples in debug mode to make it run faster
+[ "$DEBUG" == "True" ] && MAX_SAMPLES_ENABLED="--max_train_samples $MAX_SAMPLES --max_eval_samples $MAX_SAMPLES --max_predict_samples $MAX_SAMPLES"
+[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"                                                # disable fp16 in debug mode because it might run on cpu
+[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"                                              # disable wandb reporting in debug mode
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 BASE_DIR=sjp
@@ -91,10 +93,9 @@ python run_tc.py \
   --metric_for_best_model eval_loss \
   --save_total_limit 10 \
   --report_to $REPORT \
-  --max_train_samples $MAX_SAMPLES \
-  --max_eval_samples $MAX_SAMPLES \
-  --max_predict_samples $MAX_SAMPLES \
-  --overwrite_output_dir
+  --overwrite_output_dir \
+  $MAX_SAMPLES_ENABLED
+
 
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
 #  --overwrite_cache \
