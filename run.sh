@@ -42,7 +42,7 @@ MODEL_NAME="deepset/gbert-base"
 DEBUG=False
 [ "$DEBUG" == "True" ] && MAX_SAMPLES="100" || MAX_SAMPLES="None" # enable max samples in debug mode to make it run faster
 [ "$DEBUG" == "True" ] && FP16="False" || FP16="True"             # disable fp16 in debug mode because it might run on cpu
-[ "$DEBUG" == "True" ] && REPORT="none" || FP16="all"             # disable wandb reporting in debug mode
+[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"             # disable wandb reporting in debug mode
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 BASE_DIR=sjp
