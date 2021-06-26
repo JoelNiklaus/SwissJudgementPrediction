@@ -519,7 +519,7 @@ def main():
         trainer.save_metrics("test", metrics)
 
         # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
-        if training_args.report_to in ["all", "wandb"]:
+        if "wandb" in training_args.report_to:
             metrics = {k.replace("test_", "test/"): v for k, v in metrics.items()
                        if "mem" not in k and k != "test_samples"}
             wandb.log(metrics)  # log test metrics to wandb
