@@ -27,7 +27,7 @@ import sys
 import wandb
 from dataclasses import dataclass, field
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
-    classification_report, confusion_matrix
+    classification_report, confusion_matrix, f1_score
 from sklearn.preprocessing import MultiLabelBinarizer
 
 import numpy as np
@@ -411,12 +411,16 @@ def main():
 
         accuracy = accuracy_score(labels, preds)
         # weighted averaging is a better evaluation metric for imbalanced label distributions
-        precision, recall, f1_score, _ = precision_recall_fscore_support(labels, preds, average='weighted')
+        precision, recall, f1_weighted, _ = precision_recall_fscore_support(labels, preds, average='weighted')
+        f1_micro = f1_score(labels, preds, average='micro')
+        f1_macro = f1_score(labels, preds, average='macro')
         return {
             'accuracy': accuracy,
             'precision': precision,
             'recall': recall,
-            'f1_score': f1_score,
+            'f1_weighted': f1_weighted,
+            'f1_micro': f1_micro,
+            'f1_macro': f1_macro,
         }
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
