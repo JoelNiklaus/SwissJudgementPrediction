@@ -15,7 +15,12 @@ from sklearn.tree import DecisionTreeClassifier
 from root import ROOT_DIR
 
 seed = 42
+lang = 'de'
+lang_folder = ROOT_DIR / 'data' / lang
+
 base_folder = ROOT_DIR / 'sjp'
+
+task = 'single_label_classification'
 
 
 def run_k_neighbors():
@@ -34,66 +39,92 @@ def run_decision_tree():
     run_baseline(DecisionTreeClassifier(random_state=seed))
 
 
-def run_dummy():
+def run_dummy_stratified():
     run_baseline(DummyClassifier(strategy="stratified", random_state=seed))
+
+
+def run_dummy_majority():
+    run_baseline(DummyClassifier(strategy="most_frequent", random_state=seed))
+
+
+def run_dummy_random():
+    run_baseline(DummyClassifier(strategy="uniform", random_state=seed))
 
 
 def run_baseline(model):
     model_name = model.__class__.__name__
 
+    if isinstance(model, DummyClassifier):
+        model_name += "-" + model.strategy
+
     label_dict = load_labels()
-    label_list = list(label_dict["label2id"].keys())
 
-    mlb = MultiLabelBinarizer().fit([label_list])
-
-    X_test, X_train, y_test, y_train = prepare_data(mlb, model_name)
+    X_test, X_train, y_test, y_train, mlb = prepare_data(label_dict, model)
 
     # fit classifier
-    multi_out_clf = MultiOutputClassifier(model)
-    multi_out_clf.fit(X_train, y_train)
+    if task == 'multi_label_classification':
+        clf = MultiOutputClassifier(model)
+    else:
+        clf = model
+    clf.fit(X_train, y_train)
 
     # make predictions
-    preds = multi_out_clf.predict(X_test)
+    preds = clf.predict(X_test)
 
-    make_reports(label_list, mlb, model_name, preds, y_test)
+    make_reports(label_dict, mlb, model_name, preds, y_test)
 
 
-def make_reports(label_list, mlb, model_name, preds, y_test):
+def make_reports(label_dict, mlb, model_name, preds, y_test):
+    label_list = get_label_list(label_dict)
+
     baselines_folder = base_folder / 'baselines'
     model_folder = baselines_folder / model_name
     model_folder.mkdir(parents=True, exist_ok=True)
-    pred_bools, true_bools = preds_to_bools(preds), labels_to_bools(y_test)
+    if task == 'multi_label_classification':
+        preds, labels = preds_to_bools(preds), labels_to_bools(y_test)
+    if task == 'single_label_classification':
+        preds, labels = preds, [label_dict["label2id"][label] for label in y_test]
     # write predictions file
     with open(f'{model_folder}/predictons.txt', "w") as writer:
         writer.write("index\tprediction\n")
-        for index, pred in enumerate(pred_bools):
-            pred_strings = mlb.inverse_transform(np.array([pred]))[0]
+        for index, pred in enumerate(preds):
+            if task == 'multi_label_classification':
+                pred_strings = mlb.inverse_transform(np.array([pred]))[0]
+            if task == 'single_label_classification':
+                pred_strings = [label_dict["id2label"][pred]]
             writer.write(f"{index}\t{pred_strings}\n")
     # write report file
     with open(f'{model_folder}/prediction_report.txt', "w") as writer:
         writer.write("Multilabel Confusion Matrix\n")
         writer.write("=" * 75 + "\n\n")
         writer.write("reading help:\nTN FP\nFN TP\n\n")
-        matrices = multilabel_confusion_matrix(true_bools, pred_bools)
+        matrices = multilabel_confusion_matrix(labels, preds)
         for i in range(len(label_list)):
             writer.write(f"{label_list[i]}\n{str(matrices[i])}\n")
         writer.write("\n" * 3)
 
         writer.write("Classification Report\n")
         writer.write("=" * 75 + "\n\n")
-        report = classification_report(true_bools, pred_bools, target_names=label_list)
+        report = classification_report(labels, preds, target_names=label_list)
         writer.write(str(report))
 
 
-def prepare_data(mlb, model_name):
-    train = pd.read_csv('data/train.csv')
-    test = pd.read_csv('data/test.csv')
-    train['labels'] = [mlb.transform([eval(labels)])[0] for labels in train.label]
-    test['labels'] = [mlb.transform([eval(labels)])[0] for labels in test.label]
-    train.dropna(subset=['text', 'labels'])
-    test.dropna(subset=['text', 'labels'])
+def prepare_data(label_dict, model):
+    label_list = get_label_list(label_dict)
+    mlb = MultiLabelBinarizer().fit([label_list])
 
-    if model_name == 'DummyClassifier':  # here we don't need the input anyway
+    train = pd.read_csv(lang_folder / 'train.csv')
+    test = pd.read_csv(lang_folder / 'test.csv')
+
+    if task == 'multi_label_classification':
+        train['label'] = [mlb.transform([eval(labels)])[0] for labels in train.label]
+        test['label'] = [mlb.transform([eval(labels)])[0] for labels in test.label]
+    if task == 'single_label_classification':
+        train['label'] = [label_dict["label2id"][label] for label in train.label]
+    train.dropna(subset=['text', 'label'])
+    test.dropna(subset=['text', 'label'])
+
+    if isinstance(model, DummyClassifier):  # here we don't need the input anyway
         X_train = np.zeros((len(train.index), 1))
         X_test = np.zeros((len(test.index), 1))
     else:
@@ -101,9 +132,14 @@ def prepare_data(mlb, model_name):
         X_train = vectorizer.fit_transform(train.text).toarray()
         X_test = vectorizer.transform(test.text)
 
-    y_train = train.labels.tolist()
-    y_test = test.labels
-    return X_test, X_train, y_test, y_train
+    y_train = train.label.tolist()
+    y_test = test.label
+    return X_test, X_train, y_test, y_train, mlb
+
+
+def get_label_list(label_dict):
+    label_list = list(label_dict["label2id"].keys())
+    return label_list
 
 
 def preds_to_bools(predictions, threshold=0.5):
@@ -115,7 +151,7 @@ def labels_to_bools(labels):
 
 
 def load_labels():
-    with open(ROOT_DIR / 'data/labels.json', 'r') as f:
+    with open(lang_folder / 'labels.json', 'r') as f:
         label_dict = json.load(f)
         label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
         label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
@@ -123,4 +159,6 @@ def load_labels():
 
 
 if __name__ == '__main__':
-    run_dummy()
+    run_dummy_stratified()
+    run_dummy_majority()
+    run_dummy_random()
