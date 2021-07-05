@@ -70,7 +70,7 @@ faulthandler.enable()
 
 
 @dataclass
-class DataTrainingArguments:
+class DataArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
 
@@ -78,8 +78,8 @@ class DataTrainingArguments:
     into argparse arguments to be able to specify them on
     the command line.
     """
-    tune_hyperparameters: bool = field(
-        default=False, metadata={"help": "Whether or not to tune the hyperparameters before training."}
+    tune_hyperparams: bool = field(
+        default=False, metadata={"help": "Whether or not to tune the hyperparameters before training."},
     )
     max_seq_length: Optional[int] = field(
         default=512,
@@ -89,7 +89,7 @@ class DataTrainingArguments:
         },
     )
     overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."}
+        default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."},
     )
     pad_to_max_length: bool = field(
         default=False,
@@ -128,29 +128,28 @@ class ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
     """
-
     model_name_or_path: str = field(
-        default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+        default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"},
     )
     use_hierarchical_bert: bool = field(
         default=False,
-        metadata={"help": "Whether or not to use the hierarchical BERT model for handling long text inputs."}
+        metadata={"help": "Whether or not to use the hierarchical BERT model for handling long text inputs."},
     )
     use_long_bert: bool = field(
         default=False,
-        metadata={"help": "Whether or not to use the long BERT model for handling long text inputs."}
+        metadata={"help": "Whether or not to use the long BERT model for handling long text inputs."},
     )
     language: str = field(
-        default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None."}
+        default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None."},
     )
     train_language: Optional[str] = field(
-        default=None, metadata={"help": "Train language if it is different from the evaluation language."}
+        default=None, metadata={"help": "Train language if it is different from the evaluation language."},
     )
     config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
+        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"},
     )
     tokenizer_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"},
     )
     cache_dir: Optional[str] = field(
         default=None,
@@ -159,6 +158,12 @@ class ModelArguments:
     do_lower_case: Optional[bool] = field(
         default=False,
         metadata={"help": "arg to indicate if tokenizer should do lower case in AutoTokenizer.from_pretrained()"},
+    )
+    use_class_weights: bool = field(
+        default=True,
+        metadata={"help": "Whether to use one class weights to combat label imbalance. "
+                          "Because this messes with the loss function, "
+                          "label smoothing does not work if this is enabled"},
     )
     use_fast_tokenizer: bool = field(
         default=True,
@@ -200,7 +205,7 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     # for better charts when we have a group run with multiple seeds
@@ -254,19 +259,21 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
+    lang = model_args.language
+
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
     if training_args.do_train:
-        train_dataset = load_dataset("csv", data_files={"train": 'data/train.csv'})['train']
+        train_dataset = load_dataset("csv", data_files={"train": f'data/{lang}/train.csv'})['train']
 
     if training_args.do_eval:
-        eval_dataset = load_dataset("csv", data_files={"validation": 'data/val.csv'})['validation']
+        eval_dataset = load_dataset("csv", data_files={"validation": f'data/{lang}/val.csv'})['validation']
 
     if training_args.do_predict:
-        predict_dataset = load_dataset("csv", data_files={"test": 'data/test.csv'})['test']
+        predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
 
     # Labels
-    with open('data/labels.json', 'r') as f:
+    with open(f'data/{lang}/labels.json', 'r') as f:
         label_dict = json.load(f)
         label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
         label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
@@ -420,27 +427,32 @@ def main():
     else:
         data_collator = None
 
-    lbls = [item['label'] for item in train_dataset]
-    # compute class weights based on label distribution
-    class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
-    class_weight = torch.tensor(class_weight, dtype=torch.float32, device=training_args.device)  # create tensor
+    if training_args.do_train and model_args.use_class_weights:
+        lbls = [item['label'] for item in train_dataset]
+        # compute class weights based on label distribution
+        class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
+        class_weight = torch.tensor(class_weight, dtype=torch.float32, device=training_args.device)  # create tensor
 
-    class CustomTrainer(Trainer):
-        # adapt loss function to combat label imbalance
-        def compute_loss(self, model, inputs, return_outputs=False):
-            labels = inputs.pop("labels")
-            outputs = model(**inputs)
-            logits = outputs.logits
-            loss_fct = CrossEntropyLoss(weight=class_weight)
-            with autocast():
-                loss = loss_fct(logits, labels)
-                # loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
-            return (loss, outputs) if return_outputs else loss
+        class CustomTrainer(Trainer):
+            # adapt loss function to combat label imbalance
+            def compute_loss(self, model, inputs, return_outputs=False):
+                labels = inputs.pop("labels")
+                outputs = model(**inputs)
+                logits = outputs.logits
+                loss_fct = CrossEntropyLoss(weight=class_weight)
+                with autocast():  # necessary for correct pytorch types. May not work for tensorflow
+                    loss = loss_fct(logits, labels)
+                    # loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
+                return (loss, outputs) if return_outputs else loss
+
+        trainer_init = CustomTrainer
+    else:
+        trainer_init = Trainer
 
     # Initialize our Trainer
-    trainer = CustomTrainer(
-        model=model_init() if not data_args.tune_hyperparameters else None,
-        model_init=model_init if data_args.tune_hyperparameters else None,
+    trainer = trainer_init(
+        model=model_init() if not data_args.tune_hyperparams else None,
+        model_init=model_init if data_args.tune_hyperparams else None,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
@@ -451,7 +463,7 @@ def main():
     )
 
     # Hyperparameter Tuning
-    if data_args.tune_hyperparameters:
+    if data_args.tune_hyperparams:
         def optuna_hp_space(trial):
             return {
                 "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True)
@@ -505,7 +517,7 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     # Prediction
-    if training_args.do_predict and not data_args.tune_hyperparameters:
+    if training_args.do_predict and not data_args.tune_hyperparams:
         logger.info("*** Predict ***")
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
         preds = preds[0] if isinstance(preds, tuple) else preds
