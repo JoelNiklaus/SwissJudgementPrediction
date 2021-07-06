@@ -55,6 +55,7 @@ from transformers.utils import check_min_version
 from typing import Optional
 
 import LongBert
+import Longformer
 from HierarchicalBert import HierarchicalBert
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
@@ -67,6 +68,8 @@ check_min_version("4.6.0.dev0")
 logger = logging.getLogger(__name__)
 
 faulthandler.enable()
+
+long_input_bert_types = ['long', 'longformer', 'hierarchical']
 
 
 @dataclass
@@ -131,13 +134,10 @@ class ModelArguments:
     model_name_or_path: str = field(
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"},
     )
-    use_hierarchical_bert: bool = field(
-        default=False,
-        metadata={"help": "Whether or not to use the hierarchical BERT model for handling long text inputs."},
-    )
-    use_long_bert: bool = field(
-        default=False,
-        metadata={"help": "Whether or not to use the long BERT model for handling long text inputs."},
+    long_input_bert_type: str = field(
+        default=None,
+        metadata={"help": f"Which bert type to use for handling long text inputs. "
+                          f"Currently the following types are supported: {long_input_bert_types}."},
     )
     language: str = field(
         default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None."},
@@ -307,7 +307,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    if model_args.use_hierarchical_bert:
+    if model_args.long_input_bert_type == 'hierarchical':
         model_max_seq_length = config.max_position_embeddings
         max_segments = math.floor(data_args.max_seq_length / model_max_seq_length)
 
@@ -322,7 +322,7 @@ def main():
         )
 
         # enable HierarchicalBert
-        if model_args.use_hierarchical_bert:
+        if model_args.long_input_bert_type == 'hierarchical':
             encoder = model.bert
             model.bert = HierarchicalBert(encoder,
                                           max_segments=max_segments,
@@ -333,8 +333,11 @@ def main():
                                           seg_encoder_type='lstm')
 
         # enable LongBert
-        if model_args.use_long_bert:
+        if model_args.long_input_bert_type == 'long':
             model = LongBert.resize_position_embeddings(model, data_args.max_seq_length)
+
+        if model_args.long_input_bert_type == 'longformer':
+            model = Longformer.convert2longformer(model, data_args.max_seq_length)
 
         return model
 
@@ -350,7 +353,7 @@ def main():
         # Tokenize the texts
         add_special_tokens = True
         max_length = data_args.max_seq_length
-        if model_args.use_hierarchical_bert:
+        if model_args.long_input_bert_type == 'hierarchical':
             add_special_tokens = False  # because we split it internally and then add the special tokens ourselves
             # we need to make space for adding the CLS and SEP token for each segment
             max_length = max_length - max_segments * 2
