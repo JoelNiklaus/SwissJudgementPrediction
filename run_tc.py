@@ -578,7 +578,7 @@ def main():
 
                 writer.write("Classification Report\n")
                 writer.write("=" * 75 + "\n\n")
-                report = classification_report(labels, preds, target_names=label_list)
+                report = classification_report(labels, preds, target_names=label_list, digits=4)
                 writer.write(str(report))
 
     if training_args.push_to_hub:

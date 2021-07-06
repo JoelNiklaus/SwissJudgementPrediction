@@ -105,7 +105,7 @@ def make_reports(label_dict, mlb, model_name, preds, y_test):
 
         writer.write("Classification Report\n")
         writer.write("=" * 75 + "\n\n")
-        report = classification_report(labels, preds, target_names=label_list)
+        report = classification_report(labels, preds, target_names=label_list, digits=4)
         writer.write(str(report))
 
 

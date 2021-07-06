@@ -5,9 +5,6 @@ from transformers import LongformerForSequenceClassification, AutoModelForSequen
 
 def convert2longformer(model, max_seq_length: int, attention_window=128):
     assert model.config.model_type == 'bert'
-    # TODO Is this code correct?
-
-    # TODO is the attention window good?
 
     # extend position embedding
     config = model.config
@@ -38,7 +35,6 @@ def convert2longformer(model, max_seq_length: int, attention_window=128):
         self_attention.self.key_global = copy.deepcopy(self_attention.self.key)
         self_attention.self.value_global = copy.deepcopy(self_attention.self.value)
 
-    # lfm = LongformerForMaskedLM(config)
     lfm = LongformerForSequenceClassification(config)
     lfm.longformer.encoder.load_state_dict(model.bert.encoder.state_dict())  # load weights
     lfm.classifier.out_proj.load_state_dict(model.classifier.state_dict())  # load weights
