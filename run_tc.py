@@ -31,7 +31,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mul
 from sklearn.preprocessing import MultiLabelBinarizer
 
 import numpy as np
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
 
 import transformers
 from sklearn.utils import compute_class_weight
@@ -70,6 +70,7 @@ logger = logging.getLogger(__name__)
 faulthandler.enable()
 
 long_input_bert_types = ['long', 'longformer', 'hierarchical']
+languages = ['de', 'fr', 'it']
 
 
 @dataclass
@@ -140,7 +141,8 @@ class ModelArguments:
                           f"Currently the following types are supported: {long_input_bert_types}."},
     )
     language: str = field(
-        default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None."},
+        default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None. "
+                                        "Can also be set to 'all'"},
     )
     train_language: Optional[str] = field(
         default=None, metadata={"help": "Train language if it is different from the evaluation language."},
@@ -259,26 +261,42 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    lang = model_args.language
+    langs = [model_args.language]
+    if model_args.language == 'all':
+        langs = languages
+        train_datasets = []
+        eval_datasets = []
+        predict_datasets = []
 
-    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-    # download the dataset.
-    if training_args.do_train:
-        train_dataset = load_dataset("csv", data_files={"train": f'data/{lang}/train.csv'})['train']
+    for lang in langs:
+        # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+        # download the dataset.
+        if training_args.do_train:
+            train_dataset = load_dataset("csv", data_files={"train": f'data/{lang}/train.csv'})['train']
 
-    if training_args.do_eval:
-        eval_dataset = load_dataset("csv", data_files={"validation": f'data/{lang}/val.csv'})['validation']
+        if training_args.do_eval:
+            eval_dataset = load_dataset("csv", data_files={"validation": f'data/{lang}/val.csv'})['validation']
 
-    if training_args.do_predict:
-        predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
+        if training_args.do_predict:
+            predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
 
-    # Labels
-    with open(f'data/{lang}/labels.json', 'r') as f:
-        label_dict = json.load(f)
-        label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
-        label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
-        label_list = list(label_dict["label2id"].keys())
-    num_labels = len(label_list)
+        # Labels: they will get overwritten if there are multiple languages
+        with open(f'data/{lang}/labels.json', 'r') as f:
+            label_dict = json.load(f)
+            label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
+            label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
+            label_list = list(label_dict["label2id"].keys())
+        num_labels = len(label_list)
+
+        if model_args.language == 'all':
+            train_datasets.append(train_dataset)
+            eval_datasets.append(eval_dataset)
+            predict_datasets.append(predict_dataset)
+
+    if model_args.language == 'all':
+        train_dataset = concatenate_datasets(train_datasets)
+        eval_dataset = concatenate_datasets(eval_datasets)
+        predict_dataset = concatenate_datasets(predict_datasets)
 
     if model_args.problem_type == 'multi_label_classification':
         mlb = MultiLabelBinarizer().fit([label_list])
@@ -584,7 +602,7 @@ def main():
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
         if data_args.task_name is not None:
-            kwargs["language"] = "de"
+            kwargs["language"] = model_args.language
             kwargs["dataset_tags"] = "sjp"
             kwargs["dataset_args"] = data_args.task_name
             kwargs["dataset"] = f"SJP {data_args.task_name.upper()}"
