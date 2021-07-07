@@ -50,7 +50,6 @@ MAX_SAMPLES=100
 [ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp" # set other dir when debugging so we don't overwrite results
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
-BASE_DIR='sjp'
 TYPE='hierarchical' # one of 'standard', 'long', 'longformer', 'hierarchical'
 LR=3e-5             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
 BATCH_SIZE=4        # depends on how much we can fit on the gpu
