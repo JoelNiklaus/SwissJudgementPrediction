@@ -23,21 +23,21 @@ import math
 import os
 import random
 import sys
-
-import wandb
 from dataclasses import dataclass, field
+from typing import Optional
+
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
     classification_report, confusion_matrix, f1_score
 from sklearn.preprocessing import MultiLabelBinarizer
-
-import numpy as np
-from datasets import load_dataset, concatenate_datasets
-
-import transformers
 from sklearn.utils import compute_class_weight
+import numpy as np
+
+import wandb
 import torch
 from torch.cuda.amp import autocast
 from torch.nn import CrossEntropyLoss
+from datasets import load_dataset, concatenate_datasets
+import transformers
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -52,7 +52,6 @@ from transformers import (
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
-from typing import Optional
 
 import LongBert
 import Longformer
@@ -347,13 +346,13 @@ def main():
                                           max_segment_length=model_max_seq_length,
                                           cls_token_id=tokenizer.cls_token_id,
                                           sep_token_id=tokenizer.sep_token_id,
-                                          device=training_args.device,
-                                          seg_encoder_type='lstm')
+                                          device=training_args.device)
 
         # enable LongBert
         if model_args.long_input_bert_type == 'long':
             model = LongBert.resize_position_embeddings(model, data_args.max_seq_length)
 
+        # enable Longformer
         if model_args.long_input_bert_type == 'longformer':
             model = Longformer.convert2longformer(model, data_args.max_seq_length)
 
@@ -374,7 +373,7 @@ def main():
         if model_args.long_input_bert_type == 'hierarchical':
             add_special_tokens = False  # because we split it internally and then add the special tokens ourselves
             # we need to make space for adding the CLS and SEP token for each segment
-            max_length = max_length - max_segments * 2
+            max_length -= max_segments * 2
         tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
                               max_length=max_length, add_special_tokens=add_special_tokens)
 

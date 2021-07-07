@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name="Swiss Judgement Prediction"
 #SBATCH --mail-user=joel.niklaus@inf.unibe.ch
-#SBATCH --mail-type=none
+#SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=64G

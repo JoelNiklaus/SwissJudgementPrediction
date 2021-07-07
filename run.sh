@@ -45,8 +45,9 @@ DEBUG=False
 MAX_SAMPLES=100
 # enable max samples in debug mode to make it run faster
 [ "$DEBUG" == "True" ] && MAX_SAMPLES_ENABLED="--max_train_samples $MAX_SAMPLES --max_eval_samples $MAX_SAMPLES --max_predict_samples $MAX_SAMPLES"
-[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"   # disable fp16 in debug mode because it might run on cpu
-[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all" # disable wandb reporting in debug mode
+[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"      # disable fp16 in debug mode because it might run on cpu
+[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"    # disable wandb reporting in debug mode
+[ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp" # set other dir when debugging so we don't overwrite results
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 BASE_DIR='sjp'
@@ -61,7 +62,7 @@ SEED=$1
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
 DIR=$BASE_DIR/$MODEL/$LANG/$SEED
-ACCUMULATION_STEPS=$(($TOTAL_BATCH_SIZE / $BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
+ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE))                  # use this to achieve a sufficiently high total batch size
 # Assign variables for enabling/disabling respective BERT version
 [ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
 
@@ -101,9 +102,10 @@ python run_tc.py \
   --metric_for_best_model eval_loss \
   --save_total_limit 10 \
   --report_to $REPORT \
-  --overwrite_output_dir False \
+  --overwrite_output_dir True \
   --overwrite_cache False \
   $MAX_SAMPLES_ENABLED
+
 
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
 #  --resume_from_checkpoint $DIR/checkpoint-$CHECKPOINT
