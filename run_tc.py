@@ -95,7 +95,7 @@ class DataArguments:
         default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."},
     )
     pad_to_max_length: bool = field(
-        default=False,
+        default=True,
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
                     "If False, will pad the samples dynamically when batching to the maximum length in the batch."
@@ -364,6 +364,7 @@ def main():
         padding = "max_length"
     else:
         # We will pad later, dynamically at batch creation, to the max sequence length in each batch
+        # IMPORTANT: Can lead to problem with HierarchicalBert
         padding = "longest"
 
     def preprocess_function(batch):
