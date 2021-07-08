@@ -24,6 +24,7 @@ import os
 import random
 import sys
 from dataclasses import dataclass, field
+from torch import nn
 from typing import Optional
 
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
@@ -48,7 +49,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     default_data_collator,
-    set_seed, EarlyStoppingCallback,
+    set_seed, EarlyStoppingCallback, BertForSequenceClassification,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
@@ -95,10 +96,11 @@ class DataArguments:
         default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."},
     )
     pad_to_max_length: bool = field(
-        default=True,
+        default=True,  # TODO change to false again if everything works
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
-                    "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+                    "If False, will pad the samples dynamically when batching to the maximum length in the batch. "
+                    "Padding to 'longest' may lead to problems in hierarchical bert."
         },
     )
     max_train_samples: Optional[int] = field(
@@ -267,6 +269,7 @@ def main():
         eval_datasets = []
         predict_datasets = []
 
+    assert len(langs) > 0
     for lang in langs:
         # In distributed training, the load_dataset function guarantees that only one local process can concurrently
         # download the dataset.
@@ -324,9 +327,12 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
+    max_length = data_args.max_seq_length
     if model_args.long_input_bert_type == 'hierarchical':
-        model_max_seq_length = config.max_position_embeddings
-        max_segments = math.floor(data_args.max_seq_length / model_max_seq_length)
+        max_segment_length = 512  # because RoBERTa has 514 max_seq_length and not 512
+        max_segments = math.ceil(max_length / max_segment_length)
+        # we need to make space for adding the CLS and SEP token for each segment
+        max_length -= max_segments * 2
 
     def model_init():
         model = AutoModelForSequenceClassification.from_pretrained(
@@ -337,20 +343,39 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
+        # model = BertForSequenceClassification()
 
         # enable HierarchicalBert
-        if model_args.long_input_bert_type == 'hierarchical':
-            encoder = model.bert
-            model.bert = HierarchicalBert(encoder,
-                                          max_segments=max_segments,
-                                          max_segment_length=model_max_seq_length,
-                                          cls_token_id=tokenizer.cls_token_id,
-                                          sep_token_id=tokenizer.sep_token_id,
-                                          device=training_args.device)
+        if model_args.long_input_bert_type in ['hierarchical', 'long']:
+            if config.model_type == 'bert':
+                encoder = model.bert
 
-        # enable LongBert
-        if model_args.long_input_bert_type == 'long':
-            model = LongBert.resize_position_embeddings(model, data_args.max_seq_length)
+            if config.model_type in ['camembert', 'xlm-roberta']:
+                encoder = model.roberta
+
+            if model_args.long_input_bert_type == 'hierarchical':
+                long_input_bert = HierarchicalBert(encoder,
+                                                   max_segments=max_segments,
+                                                   max_segment_length=max_segment_length,
+                                                   cls_token_id=tokenizer.cls_token_id,
+                                                   sep_token_id=tokenizer.sep_token_id,
+                                                   device=training_args.device,
+                                                   seg_encoder_type='lstm')
+
+            # enable LongBert
+            if model_args.long_input_bert_type == 'long':
+                # TODO debug long bert
+                long_input_bert = LongBert.resize_position_embeddings(encoder, data_args.max_seq_length)
+
+            if config.model_type == 'bert':
+                model.bert = long_input_bert
+
+            if config.model_type in ['camembert', 'xlm-roberta']:
+                model.roberta = long_input_bert
+
+                dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
+                out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
+                model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
 
         # enable Longformer
         if model_args.long_input_bert_type == 'longformer':
@@ -367,16 +392,15 @@ def main():
         # IMPORTANT: Can lead to problem with HierarchicalBert
         padding = "longest"
 
+    add_special_tokens = True
+    if model_args.long_input_bert_type == 'hierarchical':
+        add_special_tokens = False  # because we split it internally and then add the special tokens ourselves
+
     def preprocess_function(batch):
         # Tokenize the texts
-        add_special_tokens = True
-        max_length = data_args.max_seq_length
-        if model_args.long_input_bert_type == 'hierarchical':
-            add_special_tokens = False  # because we split it internally and then add the special tokens ourselves
-            # we need to make space for adding the CLS and SEP token for each segment
-            max_length -= max_segments * 2
         tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
-                              max_length=max_length, add_special_tokens=add_special_tokens)
+                              max_length=max_length, add_special_tokens=add_special_tokens,
+                              return_token_type_ids=True)
 
         # Map labels to IDs
         if model_args.problem_type == 'multi_label_classification':

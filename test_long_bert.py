@@ -1,7 +1,11 @@
+import faulthandler
+
 from transformers import AutoTokenizer, BertForSequenceClassification
 
 # IMPORTANT: This can lead to memory and performance issues with too high max_length because of the quadratic attention!
 import LongBert
+
+faulthandler.enable()
 
 # Load model and tokenizer
 model_name = 'deepset/gbert-base'

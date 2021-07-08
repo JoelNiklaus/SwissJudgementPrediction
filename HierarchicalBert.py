@@ -16,10 +16,12 @@ class SimpleOutput(ModelOutput):
 
 
 class HierarchicalBert(nn.Module):
+
     def __init__(self, encoder, max_segments, max_segment_length, cls_token_id, sep_token_id, device,
                  seg_encoder_type="lstm"):
         super(HierarchicalBert, self).__init__()
-        assert encoder.config.model_type == 'bert'
+        supported_models = ['bert', 'camembert', 'xlm-roberta']
+        assert encoder.config.model_type in supported_models  # other models are not supported so far
         self.encoder = encoder
         self.hidden_size = encoder.config.hidden_size
         self.max_segments = max_segments
@@ -78,20 +80,21 @@ class HierarchicalBert(nn.Module):
         token_type_ids_reshape = token_type_ids.contiguous().view(-1, token_type_ids.size(-1))
 
         # Encode segments with BERT --> (160, 512, 768)
-        bert_outputs = self.encoder(input_ids=input_ids_reshape,
-                                    attention_mask=attention_mask_reshape,
-                                    token_type_ids=token_type_ids_reshape)[0]
+        encoder_outputs = self.encoder(input_ids=input_ids_reshape,
+                                       attention_mask=attention_mask_reshape,
+                                       token_type_ids=token_type_ids_reshape)[0]
 
         # Reshape back to (samples, segments, max_segment_length, output_size) --> (16, 10, 512, 768)
-        bert_outputs = bert_outputs.contiguous().view(input_ids.size(0), self.max_segments, self.max_segment_length,
-                                                      self.hidden_size)
+        encoder_outputs = encoder_outputs.contiguous().view(input_ids.size(0), self.max_segments,
+                                                            self.max_segment_length,
+                                                            self.hidden_size)
 
         # Gather CLS per segment --> (16, 10, 768)
-        bert_outputs = bert_outputs[:, :, 0]
+        encoder_outputs = encoder_outputs[:, :, 0]
 
         if self.seg_encoder_type == 'lstm':
             # LSTMs on top of segment encodings --> (16, 10, 1536)
-            lstms = self.seg_encoder(bert_outputs)
+            lstms = self.seg_encoder(encoder_outputs)
 
             # Reshape LSTM outputs to split directions -->  (16, 10, 2, 768)
             reshaped_lstms = lstms[0].view(input_ids.size(0), self.max_segments, 2, self.hidden_size)
@@ -101,12 +104,12 @@ class HierarchicalBert(nn.Module):
 
         if self.seg_encoder_type == 'transformer':
             # Transformer on top of segment encodings --> (16, 10, 768)
-            transformer = self.seg_encoder(bert_outputs)
+            transformer = self.seg_encoder(encoder_outputs)
             # TODO make this work too
 
         if self.seg_encoder_type == 'linear':
             # Transformer on top of segment encodings --> (16, 10, 768)
-            transformer = self.seg_encoder(bert_outputs)
+            transformer = self.seg_encoder(encoder_outputs)
             # TODO make this work too
 
         # Down-project -->  (16, 768)
