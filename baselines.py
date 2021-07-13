@@ -15,10 +15,7 @@ from sklearn.tree import DecisionTreeClassifier
 from root import ROOT_DIR
 
 seed = 42
-lang = 'de'
-lang_folder = ROOT_DIR / 'data' / lang
-
-base_folder = ROOT_DIR / 'sjp'
+languages = ['de', 'fr', 'it']
 
 task = 'single_label_classification'
 
@@ -77,7 +74,6 @@ def run_baseline(model):
 def make_reports(label_dict, mlb, model_name, preds, y_test):
     label_list = get_label_list(label_dict)
 
-    baselines_folder = base_folder / 'baselines'
     model_folder = baselines_folder / model_name
     model_folder.mkdir(parents=True, exist_ok=True)
     if task == 'multi_label_classification':
@@ -159,6 +155,9 @@ def load_labels():
 
 
 if __name__ == '__main__':
-    run_dummy_stratified()
-    run_dummy_majority()
-    run_dummy_random()
+    for lang in languages:
+        lang_folder = ROOT_DIR / 'data' / lang
+        baselines_folder = ROOT_DIR / 'sjp' / 'baselines'/ lang
+        run_dummy_stratified()
+        run_dummy_majority()
+        run_dummy_random()
