@@ -1,14 +1,15 @@
 import copy
 import torch
-from transformers import LongformerForSequenceClassification, AutoModelForSequenceClassification
+from transformers import AutoModelForSequenceClassification
 
 
-def convert2longformer(model, max_seq_length: int, attention_window=128):
-    assert model.config.model_type == 'bert'
+def convert2longformer(encoder, max_seq_length: int, attention_window=128):
+    supported_models = ['bert', 'camembert', 'xlm-roberta']
+    assert encoder.config.model_type in supported_models  # other models are not supported so far
 
     # extend position embedding
-    config = model.config
-    embeddings = model.bert.embeddings
+    config = encoder.config
+    embeddings = encoder.embeddings
     current_max_pos, embed_size = embeddings.position_embeddings.weight.shape
     max_seq_length += 2
     config.max_position_embeddings = max_seq_length
@@ -29,21 +30,17 @@ def convert2longformer(model, max_seq_length: int, attention_window=128):
 
     # add global attention
     config.attention_window = [attention_window] * config.num_hidden_layers
-    for i in range(len(model.bert.encoder.layer)):
-        self_attention = model.bert.encoder.layer[i].attention
+    for i in range(len(encoder.encoder.layer)):
+        self_attention = encoder.encoder.layer[i].attention
         self_attention.self.query_global = copy.deepcopy(self_attention.self.query)
         self_attention.self.key_global = copy.deepcopy(self_attention.self.key)
         self_attention.self.value_global = copy.deepcopy(self_attention.self.value)
 
-    lfm = LongformerForSequenceClassification(config)
-    lfm.longformer.encoder.load_state_dict(model.bert.encoder.state_dict())  # load weights
-    lfm.classifier.out_proj.load_state_dict(model.classifier.state_dict())  # load weights
-
     # Extra config parameters
-    lfm.config.attention_mode = "longformer"
-    lfm.config.model_type = "longformer"
+    encoder.config.attention_mode = "longformer"
+    encoder.config.model_type = "longformer"
 
-    return lfm
+    return encoder
 
 
 if __name__ == '__main__':

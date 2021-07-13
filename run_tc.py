@@ -49,7 +49,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     default_data_collator,
-    set_seed, EarlyStoppingCallback,
+    set_seed, EarlyStoppingCallback, LongformerForSequenceClassification,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
@@ -346,13 +346,14 @@ def main():
         )
         # model = BertForSequenceClassification()
 
-        # enable HierarchicalBert
-        if model_args.long_input_bert_type in ['hierarchical', 'long']:
+        if model_args.long_input_bert_type in ['hierarchical', 'long', 'longformer']:
             if config.model_type == 'bert':
                 encoder = model.bert
+                classifier = model.classifier
 
             if config.model_type in ['camembert', 'xlm-roberta']:
                 encoder = model.roberta
+                classifier = model.classifier.out_proj
 
             if model_args.long_input_bert_type == 'hierarchical':
                 long_input_bert = HierarchicalBert(encoder,
@@ -363,25 +364,28 @@ def main():
                                                    device=training_args.device,
                                                    seg_encoder_type='lstm')
 
-            # enable LongBert
             if model_args.long_input_bert_type == 'long':
                 long_input_bert = LongBert.resize_position_embeddings(encoder,
                                                                       max_length=max_length,
                                                                       device=training_args.device)
 
-            if config.model_type == 'bert':
-                model.bert = long_input_bert
+            if model_args.long_input_bert_type == 'longformer':
+                encoder = Longformer.convert2longformer(encoder, max_seq_length=max_length)
+                model = LongformerForSequenceClassification(config)
+                model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
+                model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
 
-            if config.model_type in ['camembert', 'xlm-roberta']:
-                model.roberta = long_input_bert
-                if model_args.long_input_bert_type == 'hierarchical':
-                    dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
-                    out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
-                    model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
+            if model_args.long_input_bert_type in ['hierarchical', 'long']:
+                if config.model_type == 'bert':
+                    model.bert = long_input_bert
 
-        # enable Longformer
-        if model_args.long_input_bert_type == 'longformer':
-            model = Longformer.convert2longformer(model, data_args.max_seq_length)
+                if config.model_type in ['camembert', 'xlm-roberta']:
+                    model.roberta = long_input_bert
+                    if model_args.long_input_bert_type == 'hierarchical':
+                        dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
+                        out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
+                        out_proj.load_state_dict(classifier.state_dict())  # load weights
+                        model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
 
         return model
 

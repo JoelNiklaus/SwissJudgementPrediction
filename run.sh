@@ -63,7 +63,7 @@ SEED=$1
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
 DIR=$BASE_DIR/$MODEL/$LANG/$SEED
-ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE))                  # use this to achieve a sufficiently high total batch size
+ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE))                # use this to achieve a sufficiently high total batch size
 # Assign variables for enabling/disabling respective BERT version
 [ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
 
@@ -110,7 +110,7 @@ CMD="python run_tc.py
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
 #  --resume_from_checkpoint $DIR/checkpoint-$CHECKPOINT
 
-# This output can be used to quickly run the command in the IDE for debugging
 echo "Running command
-$CMD"
+$CMD
+This output can be used to quickly run the command in the IDE for debugging"
 eval $CMD
