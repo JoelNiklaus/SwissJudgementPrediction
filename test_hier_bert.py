@@ -1,6 +1,5 @@
 import faulthandler
 
-import torch
 from torch import nn
 from transformers import (
     AutoModelForSequenceClassification,
@@ -20,6 +19,7 @@ model_name = "xlm-roberta-base"
 model_type = 'xlm-roberta'
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+
 if model_type == 'bert':
     encoder = model.bert
 

@@ -40,6 +40,8 @@ MODEL_NAME="xlm-roberta-base"
 # HierBERT/longformer (input size 1024) BERT-base: 8
 # LongBERT (input size 2048) BERT-base: 2
 # LongBERT (input size 1024) BERT-base: 4
+# LongBERT (input size 2048) XLM-RoBERTa-base: 1
+# LongBERT (input size 1024) XLM-RoBERTa-base: 2
 
 DEBUG=False
 MAX_SAMPLES=100
@@ -72,39 +74,43 @@ CHECKPOINT=""
 #CHECKPOINT=$DIR/checkpoint-2068 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
 [ "$CHECKPOINT" == "" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH=$CHECKPOINT
 
-python run_tc.py \
-  --problem_type "single_label_classification" \
-  --model_name_or_path $MODEL_PATH \
-  --run_name $MODEL-$LANG-$SEED \
-  --output_dir $DIR \
-  --long_input_bert_type $TYPE \
-  --learning_rate $LR \
-  --seed $SEED \
-  --language $LANG \
-  --do_train $TRAIN \
-  --do_eval \
-  --do_predict \
-  --tune_hyperparams False \
-  --fp16 $FP16 \
-  --fp16_full_eval $FP16 \
-  --group_by_length \
-  --logging_strategy "steps" \
-  --evaluation_strategy "epoch" \
-  --save_strategy "epoch" \
-  --gradient_accumulation_steps $ACCUMULATION_STEPS \
-  --eval_accumulation_steps $ACCUMULATION_STEPS \
-  --per_device_train_batch_size $BATCH_SIZE \
-  --per_device_eval_batch_size $BATCH_SIZE \
-  --max_seq_length $MAX_SEQ_LENGTH \
-  --num_train_epochs $NUM_EPOCHS \
-  --load_best_model_at_end \
-  --metric_for_best_model eval_loss \
-  --save_total_limit 10 \
-  --report_to $REPORT \
-  --overwrite_output_dir True \
-  --overwrite_cache False \
-  $MAX_SAMPLES_ENABLED
-
+CMD="python run_tc.py
+  --problem_type single_label_classification
+  --model_name_or_path $MODEL_PATH
+  --run_name $MODEL-$LANG-$SEED
+  --output_dir $DIR
+  --long_input_bert_type $TYPE
+  --learning_rate $LR
+  --seed $SEED
+  --language $LANG
+  --do_train $TRAIN
+  --do_eval
+  --do_predict
+  --tune_hyperparams False
+  --fp16 $FP16
+  --fp16_full_eval $FP16
+  --group_by_length
+  --logging_strategy steps
+  --evaluation_strategy epoch
+  --save_strategy epoch
+  --gradient_accumulation_steps $ACCUMULATION_STEPS
+  --eval_accumulation_steps $ACCUMULATION_STEPS
+  --per_device_train_batch_size $BATCH_SIZE
+  --per_device_eval_batch_size $BATCH_SIZE
+  --max_seq_length $MAX_SEQ_LENGTH
+  --num_train_epochs $NUM_EPOCHS
+  --load_best_model_at_end
+  --metric_for_best_model eval_loss
+  --save_total_limit 10
+  --report_to $REPORT
+  --overwrite_output_dir True
+  --overwrite_cache False
+  $MAX_SAMPLES_ENABLED"
 
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
 #  --resume_from_checkpoint $DIR/checkpoint-$CHECKPOINT
+
+# This output can be used to quickly run the command in the IDE for debugging
+echo "Running command
+$CMD"
+eval $CMD

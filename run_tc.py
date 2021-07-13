@@ -49,7 +49,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     default_data_collator,
-    set_seed, EarlyStoppingCallback, BertForSequenceClassification,
+    set_seed, EarlyStoppingCallback,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
@@ -61,6 +61,7 @@ from HierarchicalBert import HierarchicalBert
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
 os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
 os.environ['WANDB_MODE'] = "online"
+# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # use this when debugging
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.6.0.dev0")
@@ -100,7 +101,7 @@ class DataArguments:
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
                     "If False, will pad the samples dynamically when batching to the maximum length in the batch. "
-                    "Padding to 'longest' may lead to problems in hierarchical bert."
+                    "Padding to 'longest' may lead to problems in hierarchical and long bert."
         },
     )
     max_train_samples: Optional[int] = field(
@@ -364,18 +365,19 @@ def main():
 
             # enable LongBert
             if model_args.long_input_bert_type == 'long':
-                # TODO debug long bert
-                long_input_bert = LongBert.resize_position_embeddings(encoder, data_args.max_seq_length)
+                long_input_bert = LongBert.resize_position_embeddings(encoder,
+                                                                      max_length=max_length,
+                                                                      device=training_args.device)
 
             if config.model_type == 'bert':
                 model.bert = long_input_bert
 
             if config.model_type in ['camembert', 'xlm-roberta']:
                 model.roberta = long_input_bert
-
-                dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
-                out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
-                model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
+                if model_args.long_input_bert_type == 'hierarchical':
+                    dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
+                    out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
+                    model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
 
         # enable Longformer
         if model_args.long_input_bert_type == 'longformer':
