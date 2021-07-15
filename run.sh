@@ -1,47 +1,38 @@
-# IMPORTANT: $1 is the seed and also used for naming the run and the output_dir!
+#!/bin/bash
 
-# German models
-#MODEL_NAME="distilbert-base-german-cased"
-#MODEL_NAME="deepset/gbert-base"
-#MODEL_NAME="deepset/gbert-large"
-#MODEL_NAME="deepset/gelectra-base"
-#MODEL_NAME="deepset/gelectra-large"
+while getopts ":m:t:l:s:" opt; do
+  case $opt in
+  m)
+    MODEL_NAME="$OPTARG" # a model name from huggingface hub
+    ;;
+  t)
+    TYPE="$OPTARG" # one of 'standard', 'long', 'longformer', 'hierarchical'
+    ;;
+  l)
+    LANG="$OPTARG" # one of 'de', 'fr', 'it'
+    ;;
+  s)
+    SEED="$OPTARG" # integer: is also used for naming the run and the output_dir!
+    ;;
+  \?)
+    echo "Invalid option -$OPTARG" >&4
+    ;;
+  esac
+done
 
-# French models
-#MODEL_NAME="flaubert/flaubert_base_cased"
-#MODEL_NAME="flaubert/flaubert_large_cased"
-#MODEL_NAME="camembert/camembert-base-ccnet"
-#MODEL_NAME="camembert/camembert-large"
+printf "Argument MODEL_NAME is %s\n" "$MODEL_NAME"
+printf "Argument TYPE is %s\n" "$TYPE"
+printf "Argument LANG is %s\n" "$LANG"
+printf "Argument SEED is %s\n" "$SEED"
 
-# Italian models
-#MODEL_NAME="dbmdz/bert-base-italian-cased"
+# TODO we had very good results with bigbird model: experiment with english bigbird model => Story of paper: pretrainig language does not matter that much
+# TODO experiment with randomly initialized transformer
+# TODO do we need to experiment with a BiLSTM model?
 
-# Multilingual models
-#MODEL_NAME="distilbert-base-multilingual-cased"
-#MODEL_NAME="bert-base-multilingual-cased"
-MODEL_NAME="xlm-roberta-base"
-#MODEL_NAME="xlm-roberta-large"
-
-# English models
-#MODEL_NAME="bert-base-cased"
-#MODEL_NAME="bert-large-cased"
-#MODEL_NAME="allenai/longformer-base-4096"      # needs debugging
-#MODEL_NAME="allenai/longformer-large-4096"
-#MODEL_NAME="google/bigbird-roberta-base"
-#MODEL_NAME="google/bigbird-roberta-large"
-
-# Batch size for RTX 3090 for
-# Distilbert: 64
-# BERT-base: 16
-# BERT-large: 8
-# HierBERT/longformer (input size 4096) Distilbert: 8?
-# HierBERT/longformer (input size 4096) BERT-base: 2
-# HierBERT/longformer (input size 2048) BERT-base: 4
-# HierBERT/longformer (input size 1024) BERT-base: 8
-# LongBERT (input size 2048) BERT-base: 2
-# LongBERT (input size 1024) BERT-base: 4
-# LongBERT (input size 2048) XLM-RoBERTa-base: 1
-# LongBERT (input size 1024) XLM-RoBERTa-base: 2
+# IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
+TOTAL_BATCH_SIZE=64 # we made the best experiences with this (32 and below sometimes did not train well)
+LR=3e-5             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
+NUM_EPOCHS=5
 
 DEBUG=False
 MAX_SAMPLES=100
@@ -51,19 +42,33 @@ MAX_SAMPLES=100
 [ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"    # disable wandb reporting in debug mode
 [ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp" # set other dir when debugging so we don't overwrite results
 
-# IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
-TYPE='hierarchical' # one of 'standard', 'long', 'longformer', 'hierarchical'
-LR=3e-5             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
-BATCH_SIZE=4        # depends on how much we can fit on the gpu
-TOTAL_BATCH_SIZE=64
-NUM_EPOCHS=5
-LANG='de'
-SEED=$1
+# Batch size for RTX 3090 for
+# Distilbert: 64
+# BERT-base: 16
+# BERT-large: 8
+# HierBERT/Longformer (input size 4096) Distilbert: 8?
+# HierBERT/Longformer (input size 2048) BERT-base: 4
+# HierBERT/Longformer (input size 1024) BERT-base: 8
+# LongBERT (input size 2048) BERT-base: 2
+# LongBERT (input size 1024) BERT-base: 4
+# LongBERT (input size 2048) XLM-RoBERTa-base: 1
+# LongBERT (input size 1024) XLM-RoBERTa-base: 2
+if [[ "$TYPE" == "standard" ]]; then
+  BATCH_SIZE=16
+elif [[ "$TYPE" == "long" ]]; then
+  if [[ "$MODEL_NAME" =~ roberta|camembert ]]; then
+    BATCH_SIZE=1
+  else
+    BATCH_SIZE=2
+  fi
+else # either 'hierarchical' or 'longformer'
+  BATCH_SIZE=4
+fi
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
 DIR=$BASE_DIR/$MODEL/$LANG/$SEED
-ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE))                # use this to achieve a sufficiently high total batch size
+ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE))                  # use this to achieve a sufficiently high total batch size
 # Assign variables for enabling/disabling respective BERT version
 [ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
 
@@ -109,7 +114,7 @@ CMD="python run_tc.py
 
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
 #  --resume_from_checkpoint $DIR/checkpoint-$CHECKPOINT
-
+#  --metric_for_best_model eval_f1_macro # would be slightly better for imbalanced datasets
 echo "Running command
 $CMD
 This output can be used to quickly run the command in the IDE for debugging"

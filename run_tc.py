@@ -27,8 +27,14 @@ from dataclasses import dataclass, field
 from torch import nn
 from typing import Optional
 
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, multilabel_confusion_matrix, \
-    classification_report, confusion_matrix, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    precision_recall_fscore_support,
+    multilabel_confusion_matrix,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+)
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.utils import compute_class_weight
 import numpy as np
@@ -45,11 +51,13 @@ from transformers import (
     AutoTokenizer,
     DataCollatorWithPadding,
     EvalPrediction,
+    EarlyStoppingCallback,
     HfArgumentParser,
+    LongformerForSequenceClassification,
     Trainer,
     TrainingArguments,
     default_data_collator,
-    set_seed, EarlyStoppingCallback, LongformerForSequenceClassification,
+    set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
@@ -346,7 +354,7 @@ def main():
         )
         # model = BertForSequenceClassification()
 
-        if model_args.long_input_bert_type in ['hierarchical', 'long', 'longformer']:
+        if model_args.long_input_bert_type in long_input_bert_types:
             if config.model_type == 'bert':
                 encoder = model.bert
                 classifier = model.classifier
@@ -370,7 +378,8 @@ def main():
                                                                       device=training_args.device)
 
             if model_args.long_input_bert_type == 'longformer':
-                encoder = Longformer.convert2longformer(encoder, max_seq_length=max_length)
+                encoder = Longformer.convert2longformer(encoder,
+                                                        max_seq_length=max_length)
                 model = LongformerForSequenceClassification(config)
                 model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
                 model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
@@ -483,6 +492,7 @@ def main():
         data_collator = None
 
     if training_args.do_train and model_args.use_class_weights:
+        # TODO here we could also experiment with oversampling/undersampling
         lbls = [item['label'] for item in train_dataset]
         # compute class weights based on label distribution
         class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
