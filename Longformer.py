@@ -18,6 +18,7 @@ def convert2longformer(encoder, max_seq_length: int, attention_window=128):
     new_pos_embed = embeddings.position_embeddings.weight.new_empty(max_seq_length, embed_size)
     # copy position embeddings over and over to initialize the new position embeddings
     k = 2
+    new_pos_embed[:k] = embeddings.position_embeddings.weight[:k]
     step = current_max_pos - 2
     while k < max_seq_length - 1:
         if k + step >= max_seq_length:

@@ -379,7 +379,8 @@ def main():
 
             if model_args.long_input_bert_type == 'longformer':
                 encoder = Longformer.convert2longformer(encoder,
-                                                        max_seq_length=max_length)
+                                                        max_seq_length=max_length,
+                                                        attention_window=128)
                 model = LongformerForSequenceClassification(config)
                 model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
                 model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
@@ -565,6 +566,15 @@ def main():
         metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.save_model()  # Saves the tokenizer too for easy upload
+
+        if model_args.long_input_bert_type == 'longformer':
+            # Amend configuration file
+            config_path = f'{training_args.output_dir}/config.json'
+            with open(config_path) as config_file:
+                configuration = json.load(config_file)
+                configuration['model_type'] = "longformer"
+            with open(config_path, 'w') as config_file:
+                json.dump(configuration, config_file, indent=4)
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
