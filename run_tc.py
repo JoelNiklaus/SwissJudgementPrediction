@@ -25,7 +25,7 @@ import random
 import sys
 from dataclasses import dataclass, field
 from torch import nn
-from typing import Optional
+from typing import Any, Dict, Optional, Union
 
 from sklearn.metrics import (
     accuracy_score,
@@ -58,13 +58,18 @@ from transformers import (
     TrainingArguments,
     default_data_collator,
     set_seed,
+    is_apex_available
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
+if is_apex_available():
+    from apex import amp
+
 import LongBert
 import Longformer
 from HierarchicalBert import HierarchicalBert
+from Adapter import add_adapters
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
 os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
@@ -149,6 +154,10 @@ class ModelArguments:
         default=None,
         metadata={"help": f"Which bert type to use for handling long text inputs. "
                           f"Currently the following types are supported: {long_input_bert_types}."},
+    )
+    use_adapters: bool = field(
+        default=False,
+        metadata={"help": f"Use adapters in model encoder"},
     )
     language: str = field(
         default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None. "
@@ -397,6 +406,10 @@ def main():
                         out_proj.load_state_dict(classifier.state_dict())  # load weights
                         model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
 
+            # add adapter layers if use_adapters is enabled
+            if model_args.use_adapters:
+                model = add_adapters(model)
+
         return model
 
     # Preprocessing the datasets
@@ -500,6 +513,10 @@ def main():
         class_weight = torch.tensor(class_weight, dtype=torch.float32, device=training_args.device)  # create tensor
 
         class CustomTrainer(Trainer):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.use_adapters = model_args.use_adapters
+
             # adapt loss function to combat label imbalance
             def compute_loss(self, model, inputs, return_outputs=False):
                 labels = inputs.pop("labels")
@@ -510,6 +527,63 @@ def main():
                     loss = loss_fct(logits, labels)
                     # loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
                 return (loss, outputs) if return_outputs else loss
+
+            def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+                """
+                Perform a training step on a batch of inputs.
+
+                Subclass and override to inject custom behavior.
+
+                Args:
+                    model (:obj:`nn.Module`):
+                        The model to train.
+                    inputs (:obj:`Dict[str, Union[torch.Tensor, Any]]`):
+                        The inputs and targets of the model.
+
+                        The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                        argument :obj:`labels`. Check your model's documentation for all accepted arguments.
+
+                Return:
+                    :obj:`torch.Tensor`: The tensor with training loss on this batch.
+                """
+                model.train()
+                if self.use_adapters:
+                    # Freeze all parameters except adapters
+                    model.roberta.embeddings.train(False)
+
+                    for i in range(model.roberta.config.num_hidden_layers):
+                        model.roberta.encoder.layer[i].attention.self.train(False)
+                        model.roberta.encoder.layer[i].attention.output.dense.train(False)
+                        model.roberta.encoder.layer[i].intermediate.train(False)
+                        model.roberta.encoder.layer[i].output.dense.train(False)
+
+                inputs = self._prepare_inputs(inputs)
+
+                if self.use_amp:
+                    with autocast():
+                        loss = self.compute_loss(model, inputs)
+                else:
+                    loss = self.compute_loss(model, inputs)
+
+                if self.args.n_gpu > 1:
+                    loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+                if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
+                    # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
+                    loss = loss / self.args.gradient_accumulation_steps
+
+                if self.use_amp:
+                    self.scaler.scale(loss).backward()
+                elif self.use_apex:
+                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                elif self.deepspeed:
+                    # loss gets scaled under gradient_accumulation_steps in deepspeed
+                    loss = self.deepspeed.backward(loss)
+                else:
+                    loss.backward()
+
+                return loss.detach()
 
         trainer_init = CustomTrainer
     else:

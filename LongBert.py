@@ -26,7 +26,7 @@ def resize_position_embeddings(encoder, max_length, device):
     encoder.embeddings.position_ids = torch.arange(max_length).expand((1, -1)).to(device)
     encoder.embeddings.token_type_ids = torch.zeros(max_length, dtype=torch.int).expand((1, -1)).to(device)
     # Fix config values
-    encoder.config.max_position_embeddings = max_length
-    encoder.max_position_embeddings = max_length
+    encoder.config.max_position_embeddings = embedding_length
+    encoder.max_position_embeddings = embedding_length
 
     return encoder
