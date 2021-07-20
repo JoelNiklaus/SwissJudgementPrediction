@@ -2,10 +2,11 @@ import json
 
 import pandas as pd
 import numpy as np
+from sklearn import clone
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import multilabel_confusion_matrix, classification_report
+from sklearn.metrics import multilabel_confusion_matrix, classification_report, f1_score
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import MultiLabelBinarizer
@@ -14,48 +15,64 @@ from sklearn.tree import DecisionTreeClassifier
 
 from root import ROOT_DIR
 
-seed = 42
+seeds = range(5)
 languages = ['de', 'fr', 'it']
 
 task = 'single_label_classification'
 
 
 def run_k_neighbors():
-    run_baseline(KNeighborsClassifier(random_state=seed))
+    run_baseline_multi_seed(KNeighborsClassifier())
 
 
 def run_random_forest():
-    run_baseline(RandomForestClassifier(random_state=seed))
+    run_baseline_multi_seed(RandomForestClassifier())
 
 
 def run_linear_svc():
-    run_baseline(LinearSVC(random_state=seed))
+    run_baseline_multi_seed(LinearSVC())
 
 
 def run_decision_tree():
-    run_baseline(DecisionTreeClassifier(random_state=seed))
+    run_baseline_multi_seed(DecisionTreeClassifier())
 
 
 def run_dummy_stratified():
-    run_baseline(DummyClassifier(strategy="stratified", random_state=seed))
+    run_baseline_multi_seed(DummyClassifier(strategy="stratified"))
 
 
 def run_dummy_majority():
-    run_baseline(DummyClassifier(strategy="most_frequent", random_state=seed))
+    run_baseline_multi_seed(DummyClassifier(strategy="most_frequent"))
 
 
 def run_dummy_random():
-    run_baseline(DummyClassifier(strategy="uniform", random_state=seed))
+    run_baseline_multi_seed(DummyClassifier(strategy="uniform"))
 
 
-def run_baseline(model):
-    model_name = model.__class__.__name__
+def run_baseline_multi_seed(model):
+    model_folder = baselines_folder / get_model_name(model)
+    results = {"seed": [], "f1_micro": [], "f1_macro": []}
+    for seed in seeds:
+        f1_micro, f1_macro = run_baseline(clone(model), seed)
+        results['seed'].append(seed)
+        results['f1_micro'].append(f1_micro)
+        results['f1_macro'].append(f1_macro)
 
-    if isinstance(model, DummyClassifier):
-        model_name += "-" + model.strategy
+    df = pd.DataFrame.from_dict(results)
+    df.describe().round(4).to_csv(model_folder / "results.csv")
 
+
+def run_baseline(model, seed):
+    model.set_params(random_state=seed)
+
+    model_name = get_model_name(model)
+
+    model_folder = baselines_folder / model_name
+    seed_folder = model_folder / str(seed)
+    seed_folder.mkdir(parents=True, exist_ok=True)
+
+    # get data
     label_dict = load_labels()
-
     X_test, X_train, y_test, y_train, mlb = prepare_data(label_dict, model)
 
     # fit classifier
@@ -67,15 +84,19 @@ def run_baseline(model):
 
     # make predictions
     preds = clf.predict(X_test)
+    return make_reports(label_dict, mlb, seed_folder, preds, y_test)
 
-    make_reports(label_dict, mlb, model_name, preds, y_test)
+
+def get_model_name(model):
+    model_name = model.__class__.__name__
+    if isinstance(model, DummyClassifier):
+        model_name += "-" + model.strategy
+    return model_name
 
 
-def make_reports(label_dict, mlb, model_name, preds, y_test):
+def make_reports(label_dict, mlb, model_folder, preds, y_test):
     label_list = get_label_list(label_dict)
 
-    model_folder = baselines_folder / model_name
-    model_folder.mkdir(parents=True, exist_ok=True)
     if task == 'multi_label_classification':
         preds, labels = preds_to_bools(preds), labels_to_bools(y_test)
     if task == 'single_label_classification':
@@ -103,6 +124,8 @@ def make_reports(label_dict, mlb, model_name, preds, y_test):
         writer.write("=" * 75 + "\n\n")
         report = classification_report(labels, preds, target_names=label_list, digits=4)
         writer.write(str(report))
+
+    return f1_score(labels, preds, average='micro'), f1_score(labels, preds, average='macro')
 
 
 def prepare_data(label_dict, model):
@@ -157,7 +180,7 @@ def load_labels():
 if __name__ == '__main__':
     for lang in languages:
         lang_folder = ROOT_DIR / 'data' / lang
-        baselines_folder = ROOT_DIR / 'sjp' / 'baselines'/ lang
+        baselines_folder = ROOT_DIR / 'sjp' / 'baselines' / lang
         run_dummy_stratified()
         run_dummy_majority()
         run_dummy_random()
