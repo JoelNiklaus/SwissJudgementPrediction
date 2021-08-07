@@ -17,6 +17,7 @@
 """ Finetuning multi-lingual models on SJP (e.g. Bert, DistilBERT, XLM).
     Adapted from `examples/text-classification/run_glue.py`"""
 import faulthandler
+import glob
 import json
 import logging
 import math
@@ -114,6 +115,12 @@ class DataArguments:
             "help": "Whether to pad all samples to `max_seq_length`. "
                     "If False, will pad the samples dynamically when batching to the maximum length in the batch. "
                     "Padding to 'longest' may lead to problems in hierarchical and long bert."
+        },
+    )
+    test_on_special_splits: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to test on the special splits or not."
         },
     )
     max_train_samples: Optional[int] = field(
@@ -299,6 +306,16 @@ def main():
         if training_args.do_predict:
             predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
 
+        if data_args.test_on_special_splits:
+            special_splits = dict()
+            for file in glob.glob(f'data/{lang}/special_splits/*.csv'):
+                file_parts = Path(file).stem.split("-")
+                experiment = file_parts[1]
+                experiment_part = file_parts[2]
+                if experiment not in special_splits:
+                    special_splits[experiment] = dict()
+                special_splits[experiment][experiment_part] = load_dataset("csv", data_files={"test": file})['test']
+
         # Labels: they will get overwritten if there are multiple languages
         with open(f'data/{lang}/labels.json', 'r') as f:
             label_dict = json.load(f)
@@ -385,7 +402,7 @@ def main():
                                                                       max_length=max_length,
                                                                       device=training_args.device)
 
-            if model_args.long_input_bert_type == 'longformer':
+            if training_args.do_train and model_args.long_input_bert_type == 'longformer':
                 encoder = Longformer.convert2longformer(encoder,
                                                         max_seq_length=max_length,
                                                         attention_window=128)
@@ -459,6 +476,11 @@ def main():
         if data_args.max_predict_samples is not None:
             predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
         predict_dataset = preprocess_dataset(predict_dataset)
+
+    if data_args.test_on_special_splits:
+        for experiment, parts in special_splits.items():
+            for part, dataset in parts.items():
+                special_splits[experiment][part] = preprocess_dataset(dataset)
 
     def labels_to_bools(labels):
         return [tl == 1 for tl in labels]
@@ -632,27 +654,15 @@ def main():
         logger.info("*** Predict ***")
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
         preds = preds[0] if isinstance(preds, tuple) else preds
-
-        max_predict_samples = (
-            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
-        )
-        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
-
-        trainer.log_metrics("test", metrics)
-        trainer.save_metrics("test", metrics)
-
-        # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
-        if "wandb" in training_args.report_to:
-            metrics = {k.replace("test_", "test/"): v for k, v in metrics.items()
-                       if "mem" not in k and k != "test_samples"}
-            wandb.log(metrics)  # log test metrics to wandb
-
         if model_args.problem_type == 'multi_label_classification':
             preds, labels = preds_to_bools(preds), labels_to_bools(labels)
         if model_args.problem_type == 'single_label_classification':
             preds = np.argmax(preds, axis=1)
-        output_predict_file = os.path.join(training_args.output_dir, "predictions.txt")
-        output_report_file = os.path.join(training_args.output_dir, "prediction_report.txt")
+        return preds, labels, metrics
+
+    def write_reports(base_dir, preds, labels):
+        output_predict_file = os.path.join(base_dir, "predictions.txt")
+        output_report_file = os.path.join(base_dir, "prediction_report.txt")
         if trainer.is_world_process_zero():
             # write predictions file
             with open(output_predict_file, "w") as writer:
@@ -684,6 +694,34 @@ def main():
                 writer.write("=" * 75 + "\n\n")
                 report = classification_report(labels, preds, target_names=label_list, digits=4)
                 writer.write(str(report))
+
+    # Prediction
+    if training_args.do_predict and not data_args.tune_hyperparams:
+        logger.info("*** Predict ***")
+        preds, labels, metrics = predict(predict_dataset)
+
+        max_predict_samples = (
+            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+        )
+        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
+
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
+
+        # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
+        if "wandb" in training_args.report_to:
+            metrics = {k.replace("test_", "test/"): v for k, v in metrics.items()
+                       if "mem" not in k and k != "test_samples"}
+            wandb.log(metrics)  # log test metrics to wandb
+
+        write_reports(training_args.output_dir, preds, labels)
+
+    # Special Splits
+    if data_args.test_on_special_splits:
+        for experiment, parts in special_splits.items():
+            for part, dataset in parts.items():
+                preds, labels, metrics = predict(predict_dataset)
+                write_reports(os.path.join(training_args.output_dir, experiment, part), preds, labels)
 
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
