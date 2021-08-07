@@ -23,8 +23,12 @@ import math
 import os
 import random
 import sys
+from pathlib import Path
+
+import wandb
+import numpy as np
+
 from dataclasses import dataclass, field
-from torch import nn
 from typing import Optional
 
 from sklearn.metrics import (
@@ -37,12 +41,12 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.utils import compute_class_weight
-import numpy as np
 
-import wandb
 import torch
 from torch.cuda.amp import autocast
+from torch import nn
 from torch.nn import CrossEntropyLoss
+
 from datasets import load_dataset, concatenate_datasets
 import transformers
 from transformers import (
@@ -171,11 +175,15 @@ class ModelArguments:
         default=False,
         metadata={"help": "arg to indicate if tokenizer should do lower case in AutoTokenizer.from_pretrained()"},
     )
-    use_class_weights: bool = field(
-        default=True,
-        metadata={"help": "Whether to use one class weights to combat label imbalance. "
-                          "Because this messes with the loss function, "
-                          "label smoothing does not work if this is enabled"},
+    label_imbalance_method: Optional[str] = field(
+        default=None,
+        metadata={"help": "Whether or not to use any method to combat label imbalance. "
+                          "Available are 'class_weights', 'oversampling' and 'undersampling'."
+                          "'class_weights' applies a special term to the loss function which gives more weight to the minority class. "
+                          "(Because this messes with the loss function, label smoothing does not work if this is enabled) "
+                          "'oversampling' oversamples the minority class to match the number of samples in the majority class. "
+                          "'undersampling' undersamples the majority class to match the number of samples in the minority class."
+                  },
     )
     use_fast_tokenizer: bool = field(
         default=True,
@@ -492,9 +500,8 @@ def main():
     else:
         data_collator = None
 
-    if training_args.do_train and model_args.use_class_weights:
-        # TODO here we could also experiment with oversampling/undersampling
-        lbls = [item['label'] for item in train_dataset]
+    lbls = [item['label'] for item in train_dataset]
+    if training_args.do_train and model_args.label_imbalance_method == 'class_weights':
         # compute class weights based on label distribution
         class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
         class_weight = torch.tensor(class_weight, dtype=torch.float32, device=training_args.device)  # create tensor
@@ -514,6 +521,37 @@ def main():
         trainer_init = CustomTrainer
     else:
         trainer_init = Trainer
+
+    # NOTE: This is not optimized for multiclass classification
+    if model_args.label_imbalance_method in ['oversampling', 'undersampling']:
+        label_datasets = dict()
+        minority_len, majority_len = len(train_dataset), 0
+        for label_id in label_dict['id2label'].keys():
+            label_datasets[label_id] = train_dataset.filter(lambda item: item['label'] == label_id)
+            if len(label_datasets[label_id]) < minority_len:
+                minority_len = len(label_datasets[label_id])
+                minority_id = label_id
+            if len(label_datasets[label_id]) > majority_len:
+                majority_len = len(label_datasets[label_id])
+                majority_id = label_id
+
+    if training_args.do_train and model_args.label_imbalance_method == 'oversampling':
+        logger.info("Oversampling the minority class")
+        datasets = [train_dataset]
+        num_full_minority_sets = int(majority_len / minority_len)
+        for i in range(num_full_minority_sets - 1):  # -1 because one is already included in the trainig dataset
+            datasets.append(label_datasets[minority_id])
+
+        remaining_minority_samples = majority_len % minority_len
+        random_ids = np.random.choice(minority_len, remaining_minority_samples, replace=False)
+        datasets.append(label_datasets[minority_id].select(random_ids))
+        train_dataset = concatenate_datasets(datasets)
+    if training_args.do_train and model_args.label_imbalance_method == 'undersampling':
+        logger.info("Undersampling the majority class")
+        random_ids = np.random.choice(majority_len, minority_len, replace=False)
+        # just select only the number of minority samples from the majority class
+        label_datasets[majority_id] = label_datasets[majority_id].select(random_ids)
+        train_dataset = concatenate_datasets(list(label_datasets.values()))
 
     # Initialize our Trainer
     trainer = trainer_init(
@@ -551,8 +589,8 @@ def main():
         for n, v in best_trial.hyperparameters.items():
             setattr(trainer.args, n, v)
 
-    # Training
     if training_args.do_train:
+        logger.info("*** Train ***")
         checkpoint = None
         if training_args.resume_from_checkpoint is not None:
             checkpoint = training_args.resume_from_checkpoint
@@ -580,7 +618,6 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
-    # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate(eval_dataset=eval_dataset)
@@ -591,8 +628,7 @@ def main():
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
-    # Prediction
-    if training_args.do_predict and not data_args.tune_hyperparams:
+    def predict(predict_dataset):
         logger.info("*** Predict ***")
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
         preds = preds[0] if isinstance(preds, tuple) else preds
