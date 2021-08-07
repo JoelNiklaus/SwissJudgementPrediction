@@ -29,11 +29,6 @@ printf "Argument SEED is %s\n" "$SEED"
 # TODO experiment with randomly initialized transformer
 # TODO do we need to experiment with a BiLSTM model?
 
-# IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
-TOTAL_BATCH_SIZE=64 # we made the best experiences with this (32 and below sometimes did not train well)
-LR=3e-5             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
-NUM_EPOCHS=5
-
 DEBUG=False
 MAX_SAMPLES=100
 # enable max samples in debug mode to make it run faster
@@ -41,6 +36,11 @@ MAX_SAMPLES=100
 [ "$DEBUG" == "True" ] && FP16="False" || FP16="True"      # disable fp16 in debug mode because it might run on cpu
 [ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"    # disable wandb reporting in debug mode
 [ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp" # set other dir when debugging so we don't overwrite results
+
+# IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
+TOTAL_BATCH_SIZE=64 # we made the best experiences with this (32 and below sometimes did not train well)
+LR=3e-5             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
+NUM_EPOCHS=5
 
 # Batch size for RTX 3090 for
 # Distilbert: 64
@@ -65,24 +65,32 @@ else # either 'hierarchical' or 'longformer'
   BATCH_SIZE=4
 fi
 
+TEST_ON_SPECIAL_SPLITS="False"
+
+MODE='train'                                            # Can be either 'train' or 'test'
+[ "$MODE" == "train" ] && TRAIN="True" || TRAIN="False" # disable training if we are not in train mode
+
+TRAIN_LANG=de
+
+LABEL_IMBALANCE_METHOD=undersampling
+
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
-DIR=$BASE_DIR/$MODEL/$LANG/$SEED
+DIR=$BASE_DIR/$MODE/$MODEL/$LANG/$SEED
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE))                  # use this to achieve a sufficiently high total batch size
 # Assign variables for enabling/disabling respective BERT version
 [ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
 
-MODE='train'                                            # Can be either 'train' or 'evaluate'
-[ "$MODE" == "train" ] && TRAIN="True" || TRAIN="FALSE" # disable training if we are not in train mode
-
+# Set this to a path to start from a saved checkpoint and to an empty string otherwise
 CHECKPOINT=""
-#CHECKPOINT=$DIR/checkpoint-2068 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
+#CHECKPOINT=sjp/train/$MODEL/$TRAIN_LANG/$SEED
 [ "$CHECKPOINT" == "" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH=$CHECKPOINT
 
-CMD="python run_tc.py
+CMD="
+python run_tc.py
   --problem_type single_label_classification
   --model_name_or_path $MODEL_PATH
-  --run_name $MODEL-$LANG-$SEED
+  --run_name $MODE-$MODEL-$LANG-$SEED
   --output_dir $DIR
   --long_input_bert_type $TYPE
   --learning_rate $LR
@@ -98,6 +106,7 @@ CMD="python run_tc.py
   --logging_strategy steps
   --evaluation_strategy epoch
   --save_strategy epoch
+  --label_imbalance_method $LABEL_IMBALANCE_METHOD
   --gradient_accumulation_steps $ACCUMULATION_STEPS
   --eval_accumulation_steps $ACCUMULATION_STEPS
   --per_device_train_batch_size $BATCH_SIZE
@@ -110,12 +119,16 @@ CMD="python run_tc.py
   --report_to $REPORT
   --overwrite_output_dir True
   --overwrite_cache False
-  $MAX_SAMPLES_ENABLED"
-
+  --test_on_special_splits $TEST_ON_SPECIAL_SPLITS
+  $MAX_SAMPLES_ENABLED
+"
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
 #  --resume_from_checkpoint $DIR/checkpoint-$CHECKPOINT
 #  --metric_for_best_model eval_f1_macro # would be slightly better for imbalanced datasets
+
 echo "Running command
 $CMD
 This output can be used to quickly run the command in the IDE for debugging"
+
+# Actually execute the command
 eval $CMD

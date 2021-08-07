@@ -18,6 +18,7 @@ MODEL_NAME="camembert/camembert-base-ccnet"
 
 # Italian models
 #MODEL_NAME="dbmdz/bert-base-italian-cased"
+#MODEL_NAME="Musixmatch/umberto-commoncrawl-cased-v1"
 
 # Multilingual models
 #MODEL_NAME="distilbert-base-multilingual-cased"
