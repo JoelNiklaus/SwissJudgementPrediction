@@ -522,8 +522,8 @@ def main():
     else:
         data_collator = None
 
-    lbls = [item['label'] for item in train_dataset]
     if training_args.do_train and model_args.label_imbalance_method == 'class_weights':
+        lbls = [item['label'] for item in train_dataset]
         # compute class weights based on label distribution
         class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
         class_weight = torch.tensor(class_weight, dtype=torch.float32, device=training_args.device)  # create tensor
