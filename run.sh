@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts ":m:t:l:s:" opt; do
+while getopts ":m:t:l:s:d:" opt; do
   case $opt in
   m)
     MODEL_NAME="$OPTARG" # a model name from huggingface hub
@@ -14,8 +14,11 @@ while getopts ":m:t:l:s:" opt; do
   s)
     SEED="$OPTARG" # integer: is also used for naming the run and the output_dir!
     ;;
+  d)
+    DEBUG="$OPTARG" # one of 'True' or 'False'
+    ;;
   \?)
-    echo "Invalid option -$OPTARG" >&4
+    echo "Invalid option -$OPTARG" >&5
     ;;
   esac
 done
@@ -24,12 +27,8 @@ printf "Argument MODEL_NAME is %s\n" "$MODEL_NAME"
 printf "Argument TYPE is %s\n" "$TYPE"
 printf "Argument LANG is %s\n" "$LANG"
 printf "Argument SEED is %s\n" "$SEED"
+printf "Argument DEBUG is %s\n" "$DEBUG"
 
-# TODO we had very good results with bigbird model: experiment with english bigbird model => Story of paper: pretrainig language does not matter that much
-# TODO experiment with randomly initialized transformer
-# TODO do we need to experiment with a BiLSTM model?
-
-DEBUG=False
 MAX_SAMPLES=100
 # enable max samples in debug mode to make it run faster
 [ "$DEBUG" == "True" ] && MAX_SAMPLES_ENABLED="--max_train_samples $MAX_SAMPLES --max_eval_samples $MAX_SAMPLES --max_predict_samples $MAX_SAMPLES"
