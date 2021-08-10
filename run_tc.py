@@ -545,7 +545,7 @@ def main():
         trainer_init = Trainer
 
     # NOTE: This is not optimized for multiclass classification
-    if model_args.label_imbalance_method in ['oversampling', 'undersampling']:
+    if training_args.do_train and model_args.label_imbalance_method in ['oversampling', 'undersampling']:
         label_datasets = dict()
         minority_len, majority_len = len(train_dataset), 0
         for label_id in label_dict['id2label'].keys():

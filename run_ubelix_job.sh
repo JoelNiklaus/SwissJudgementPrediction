@@ -11,8 +11,10 @@
 #SBATCH --array=1-5%1
 
 # Put your code below this line
-# $1: model_name, $2: type, $3: lang
-bash run.sh -m $1 -t $2 -l $3 -s ${SLURM_ARRAY_TASK_ID} -d False >current-run.out
+
+# $1: model_name, $2: type, $3: language, $4: train_language, $5: mode, $6 special_splits
+bash run.sh --model_name=$1 --type=$2 --language=$3 --train_language=$4 --mode=$5 --special_splits=$6 \
+  --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
 
 # IMPORTANT:
 # Run with                  sbatch run_ubelix_job.sl

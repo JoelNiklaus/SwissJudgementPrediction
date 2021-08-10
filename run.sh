@@ -1,33 +1,49 @@
 #!/bin/bash
 
-while getopts ":m:t:l:s:d:" opt; do
-  case $opt in
-  m)
-    MODEL_NAME="$OPTARG" # a model name from huggingface hub
+while [ $# -gt 0 ]; do
+  case "$1" in
+  --model_name=*)
+    MODEL_NAME="${1#*=}" # a model name from huggingface hub
     ;;
-  t)
-    TYPE="$OPTARG" # one of 'standard', 'long', 'longformer', 'hierarchical'
+  --type=*)
+    TYPE="${1#*=}" # one of 'standard', 'long', 'longformer', 'hierarchical'
     ;;
-  l)
-    LANG="$OPTARG" # one of 'de', 'fr', 'it'
+  --language=*)
+    LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
     ;;
-  s)
-    SEED="$OPTARG" # integer: is also used for naming the run and the output_dir!
+  --train_language=*)
+    TRAIN_LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
     ;;
-  d)
-    DEBUG="$OPTARG" # one of 'True' or 'False'
+  --mode=*)
+    MODE="${1#*=}" # either 'train' or 'test'
     ;;
-  \?)
-    echo "Invalid option -$OPTARG" >&5
+  --special_splits=*)
+    SPECIAL_SPLITS="${1#*=}" # one of 'True' or 'False'
+    ;;
+  --seed=*)
+    SEED="${1#*=}" # integer: is also used for naming the run and the output_dir!
+    ;;
+  --debug=*)
+    DEBUG="${1#*=}" # one of 'True' or 'False'
+    ;;
+  *)
+    printf "***************************\n"
+    printf "* Error: Invalid argument.*\n"
+    printf "***************************\n"
+    exit 1
     ;;
   esac
+  shift
 done
 
-printf "Argument MODEL_NAME is %s\n" "$MODEL_NAME"
-printf "Argument TYPE is %s\n" "$TYPE"
-printf "Argument LANG is %s\n" "$LANG"
-printf "Argument SEED is %s\n" "$SEED"
-printf "Argument DEBUG is %s\n" "$DEBUG"
+printf "Argument MODEL_NAME is \t\t\t %s\n"      "$MODEL_NAME"
+printf "Argument TYPE is \t\t\t %s\n"            "$TYPE"
+printf "Argument LANGUAGE is \t\t\t %s\n"        "$LANGUAGE"
+printf "Argument TRAIN_LANGUAGE is \t\t %s\n"    "$TRAIN_LANGUAGE"
+printf "Argument MODE is \t\t\t %s\n"            "$MODE"
+printf "Argument SPECIAL_SPLITS is \t\t %s\n"    "$SPECIAL_SPLITS"
+printf "Argument SEED is \t\t\t %s\n"            "$SEED"
+printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
 
 MAX_SAMPLES=100
 # enable max samples in debug mode to make it run faster
@@ -40,6 +56,7 @@ MAX_SAMPLES=100
 TOTAL_BATCH_SIZE=64 # we made the best experiences with this (32 and below sometimes did not train well)
 LR=3e-5             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
 NUM_EPOCHS=5
+LABEL_IMBALANCE_METHOD=oversampling
 
 # Batch size for RTX 3090 for
 # Distilbert: 64
@@ -64,37 +81,27 @@ else # either 'hierarchical' or 'longformer'
   BATCH_SIZE=4
 fi
 
-TEST_ON_SPECIAL_SPLITS="False"
-
-MODE='train'                                            # Can be either 'train' or 'test'
-[ "$MODE" == "train" ] && TRAIN="True" || TRAIN="False" # disable training if we are not in train mode
-
-TRAIN_LANG=de
-
-LABEL_IMBALANCE_METHOD=oversampling
-
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
-DIR=$BASE_DIR/$MODE/$MODEL/$LANG/$SEED
-ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE))                  # use this to achieve a sufficiently high total batch size
-# Assign variables for enabling/disabling respective BERT version
-[ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
-
+DIR=$BASE_DIR/$MODE/$MODEL/$LANGUAGE/$SEED
+ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
+# how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
+[ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048
+# disable training if we are not in train mode
+[ "$MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
-CHECKPOINT=""
-#CHECKPOINT=sjp/train/$MODEL/$TRAIN_LANG/$SEED
-[ "$CHECKPOINT" == "" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH=$CHECKPOINT
+[ "$MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
 
 CMD="
 python run_tc.py
   --problem_type single_label_classification
   --model_name_or_path $MODEL_PATH
-  --run_name $MODE-$MODEL-$LANG-$SEED
+  --run_name $MODE-$MODEL-$LANGUAGE-$SEED
   --output_dir $DIR
   --long_input_bert_type $TYPE
   --learning_rate $LR
   --seed $SEED
-  --language $LANG
+  --language $LANGUAGE
   --do_train $TRAIN
   --do_eval
   --do_predict
@@ -118,7 +125,7 @@ python run_tc.py
   --report_to $REPORT
   --overwrite_output_dir True
   --overwrite_cache False
-  --test_on_special_splits $TEST_ON_SPECIAL_SPLITS
+  --test_on_special_splits $SPECIAL_SPLITS
   $MAX_SAMPLES_ENABLED
 "
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
