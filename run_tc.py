@@ -639,9 +639,18 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
+    def remove_metrics(metrics, split):
+        # remove unnecessary values to make overview nicer in wandb
+        metrics.pop(f"{split}_loss")
+        metrics.pop(f"{split}_runtime")
+        metrics.pop(f"{split}_steps_per_second")
+        metrics.pop(f"{split}_samples_per_second")
+
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
+
         metrics = trainer.evaluate(eval_dataset=eval_dataset)
+        remove_metrics(metrics, 'eval')
 
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
@@ -651,6 +660,8 @@ def main():
 
     def predict(predict_dataset):
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
+        remove_metrics(metrics, 'test')
+
         preds = preds[0] if isinstance(preds, tuple) else preds
         if model_args.problem_type == 'multi_label_classification':
             preds, labels = preds_to_bools(preds), labels_to_bools(labels)
@@ -720,10 +731,15 @@ def main():
         logger.info("*** Special Splits ***")
         for experiment, parts in special_splits.items():
             for part, dataset in parts.items():
-                if len(dataset) > 0: # we need at least one example
+                if len(dataset) > 0:  # we need at least one example
                     base_dir = Path(training_args.output_dir) / experiment / part
                     base_dir.mkdir(parents=True, exist_ok=True)
                     preds, labels, metrics = predict(dataset)
+                    if "wandb" in training_args.report_to:
+                        prefix = f"{experiment}/{part}/"
+                        metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
+                        metrics[f'{prefix}support'] = len(dataset)
+                        wandb.log(metrics)  # log test metrics to wandb
                     write_reports(base_dir, preds, labels)
 
     if training_args.push_to_hub:
