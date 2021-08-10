@@ -650,7 +650,6 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     def predict(predict_dataset):
-        logger.info("*** Predict ***")
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
         preds = preds[0] if isinstance(preds, tuple) else preds
         if model_args.problem_type == 'multi_label_classification':
@@ -691,7 +690,8 @@ def main():
 
                 writer.write("Classification Report\n")
                 writer.write("=" * 75 + "\n\n")
-                report = classification_report(labels, preds, target_names=label_list, digits=4)
+                report = classification_report(labels, preds, digits=4,
+                                               target_names=label_list, labels=list(label_dict['label2id'].values()))
                 writer.write(str(report))
 
     # Prediction
@@ -717,10 +717,14 @@ def main():
 
     # Special Splits
     if data_args.test_on_special_splits:
+        logger.info("*** Special Splits ***")
         for experiment, parts in special_splits.items():
             for part, dataset in parts.items():
-                preds, labels, metrics = predict(dataset)
-                write_reports(os.path.join(training_args.output_dir, experiment, part), preds, labels)
+                if len(dataset) > 0: # we need at least one example
+                    base_dir = Path(training_args.output_dir) / experiment / part
+                    base_dir.mkdir(parents=True, exist_ok=True)
+                    preds, labels, metrics = predict(dataset)
+                    write_reports(base_dir, preds, labels)
 
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
