@@ -308,13 +308,12 @@ def main():
 
         if data_args.test_on_special_splits:
             special_splits = dict()
-            for file in glob.glob(f'data/{lang}/special_splits/*.csv'):
-                file_parts = Path(file).stem.split("-")
-                experiment = file_parts[1]
-                experiment_part = file_parts[2]
+            for file in glob.glob(f'data/{lang}/special_splits/*/*.csv'):
+                experiment = Path(file).parent.stem
+                part = Path(file).stem.split("-")[1]
                 if experiment not in special_splits:
                     special_splits[experiment] = dict()
-                special_splits[experiment][experiment_part] = load_dataset("csv", data_files={"test": file})['test']
+                special_splits[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
 
         # Labels: they will get overwritten if there are multiple languages
         with open(f'data/{lang}/labels.json', 'r') as f:
@@ -720,7 +719,7 @@ def main():
     if data_args.test_on_special_splits:
         for experiment, parts in special_splits.items():
             for part, dataset in parts.items():
-                preds, labels, metrics = predict(predict_dataset)
+                preds, labels, metrics = predict(dataset)
                 write_reports(os.path.join(training_args.output_dir, experiment, part), preds, labels)
 
     if training_args.push_to_hub:
