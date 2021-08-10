@@ -71,7 +71,7 @@ MODE='train'                                            # Can be either 'train' 
 
 TRAIN_LANG=de
 
-LABEL_IMBALANCE_METHOD=undersampling
+LABEL_IMBALANCE_METHOD=oversampling
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE

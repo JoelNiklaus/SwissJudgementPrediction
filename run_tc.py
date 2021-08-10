@@ -377,7 +377,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        # model = BertForSequenceClassification()
+        # model = BertForSequenceClassification() # for untrained model
 
         if model_args.long_input_bert_type in long_input_bert_types:
             if config.model_type == 'bert':

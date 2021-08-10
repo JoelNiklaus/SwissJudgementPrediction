@@ -4,33 +4,15 @@
 #SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --partition=gpu-invest
 #SBATCH --gres=gpu:rtx3090:1
 #SBATCH --time=24:00:00
 #SBATCH --array=1-5%1
 
-# German models
-#MODEL_NAME="deepset/gbert-base"
-
-# French models
-MODEL_NAME="camembert/camembert-base-ccnet"
-
-# Italian models
-#MODEL_NAME="dbmdz/bert-base-italian-cased"
-#MODEL_NAME="Musixmatch/umberto-commoncrawl-cased-v1"
-
-# Multilingual models
-#MODEL_NAME="distilbert-base-multilingual-cased"
-#MODEL_NAME="bert-base-multilingual-cased"
-#MODEL_NAME="xlm-roberta-base"
-#MODEL_NAME="xlm-roberta-large"
-
-TYPE='longformer' # 'standard', 'long', 'longformer', 'hierarchical'
-LANG='fr'         #'de', 'fr', 'it'
-
 # Put your code below this line
-bash run.sh -m $MODEL_NAME -t $TYPE -l $LANG -s ${SLURM_ARRAY_TASK_ID} >current-run.out
+# $1: model_name, $2: type, $3: lang
+bash run.sh -m $1 -t $2 -l $3 -s ${SLURM_ARRAY_TASK_ID} -d False >current-run.out
 
 # IMPORTANT:
 # Run with                  sbatch run_ubelix_job.sl
