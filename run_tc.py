@@ -379,6 +379,10 @@ def main():
         # model = BertForSequenceClassification() # for untrained model
 
         if model_args.long_input_bert_type in long_input_bert_types:
+            if config.model_type == 'distilbert':
+                encoder = model.distilbert
+                classifier = model.classifier
+
             if config.model_type == 'bert':
                 encoder = model.bert
                 classifier = model.classifier
@@ -410,6 +414,9 @@ def main():
                 model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
 
             if model_args.long_input_bert_type in ['hierarchical', 'long']:
+                if config.model_type == 'distilbert':
+                    model.distilbert = long_input_bert
+
                 if config.model_type == 'bert':
                     model.bert = long_input_bert
 
@@ -420,6 +427,14 @@ def main():
                         out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
                         out_proj.load_state_dict(classifier.state_dict())  # load weights
                         model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
+
+            if training_args.do_train and model_args.long_input_bert_type == 'longformer':
+                encoder = Longformer.convert2longformer(encoder,
+                                                        max_seq_length=max_length,
+                                                        attention_window=128)
+                model = LongformerForSequenceClassification(config)
+                model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
+                model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
 
         return model
 

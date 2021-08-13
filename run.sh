@@ -59,7 +59,7 @@ NUM_EPOCHS=5
 LABEL_IMBALANCE_METHOD=oversampling
 
 # Batch size for RTX 3090 for
-# Distilbert: 64
+# Distilbert: 32
 # BERT-base: 16
 # BERT-large: 8
 # HierBERT/Longformer (input size 4096) Distilbert: 8?
@@ -79,6 +79,9 @@ elif [[ "$TYPE" == "long" ]]; then
   fi
 else # either 'hierarchical' or 'longformer'
   BATCH_SIZE=4
+fi
+if [[ "$MODEL_NAME" =~ distilbert ]]; then
+    BATCH_SIZE=$(($BATCH_SIZE * 2))
 fi
 
 # Compute variables based on settings above
