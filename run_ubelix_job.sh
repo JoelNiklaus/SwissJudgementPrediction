@@ -1,14 +1,19 @@
 #!/bin/bash
-#SBATCH --job-name="Swiss Judgement Prediction"
+#SBATCH --job-name="SJP"
 #SBATCH --mail-user=joel.niklaus@inf.unibe.ch
 #SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem=128G
-#SBATCH --partition=gpu-invest
-#SBATCH --gres=gpu:rtx3090:1
 #SBATCH --time=24:00:00
+#SBATCH --mem=128G
+#SBATCH --gres=gpu:rtx3090:1
+#SBATCH --qos=job_gpu_preempt
+#SBATCH --partition=gpu
 #SBATCH --array=1-5%1
+
+# enable this when on gpu partition (and NOT on gpu-invest)
+###SBATCH --qos=job_gpu_preempt
+
 
 # Put your code below this line
 

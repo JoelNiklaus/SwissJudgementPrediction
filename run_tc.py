@@ -405,14 +405,6 @@ def main():
                                                                       max_length=max_length,
                                                                       device=training_args.device)
 
-            if training_args.do_train and model_args.long_input_bert_type == 'longformer':
-                encoder = Longformer.convert2longformer(encoder,
-                                                        max_seq_length=max_length,
-                                                        attention_window=128)
-                model = LongformerForSequenceClassification(config)
-                model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
-                model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
-
             if model_args.long_input_bert_type in ['hierarchical', 'long']:
                 if config.model_type == 'distilbert':
                     model.distilbert = long_input_bert
@@ -746,7 +738,7 @@ def main():
         logger.info("*** Special Splits ***")
         for experiment, parts in special_splits.items():
             for part, dataset in parts.items():
-                if len(dataset) > 0:  # we need at least one example
+                if len(dataset) >= 100:  # we need at least one example but below 100 it does not make much sense
                     base_dir = Path(training_args.output_dir) / experiment / part
                     base_dir.mkdir(parents=True, exist_ok=True)
                     preds, labels, metrics = predict(dataset)
