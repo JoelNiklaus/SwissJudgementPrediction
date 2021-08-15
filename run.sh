@@ -99,7 +99,7 @@ CMD="
 python run_tc.py
   --problem_type single_label_classification
   --model_name_or_path $MODEL_PATH
-  --run_name $MODE-$MODEL-$LANGUAGE-$SEED
+  --run_name $MODE-$MODEL-$LANGUAGE-$TRAIN_LANGUAGE-$SEED
   --output_dir $DIR
   --long_input_bert_type $TYPE
   --learning_rate $LR
