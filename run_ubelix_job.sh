@@ -15,7 +15,6 @@
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt
 
-
 # Put your code below this line
 
 # $1: model_name, $2: type, $3: language, $4: train_language, $5: mode, $6 special_splits

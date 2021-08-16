@@ -124,7 +124,7 @@ python run_tc.py
   --num_train_epochs $NUM_EPOCHS
   --load_best_model_at_end
   --metric_for_best_model eval_loss
-  --save_total_limit 10
+  --save_total_limit 3
   --report_to $REPORT
   --overwrite_output_dir True
   --overwrite_cache False

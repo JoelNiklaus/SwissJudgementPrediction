@@ -6,6 +6,7 @@ from torch import nn
 from transformers.file_utils import ModelOutput
 
 
+# TODO why not use transformers.modeling_outputs.SequenceClassifierOutput here?
 @dataclass
 class SimpleOutput(ModelOutput):
     last_hidden_state: torch.FloatTensor = None
@@ -15,6 +16,7 @@ class SimpleOutput(ModelOutput):
     cross_attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
+# TODO subclass BertModel, BertConfig and BertTokenizer to make it more clean and to override save_pretrained() so that the seg_encoder is saved too
 class HierarchicalBert(nn.Module):
 
     def __init__(self, encoder, max_segments, max_segment_length, cls_token_id, sep_token_id, device,

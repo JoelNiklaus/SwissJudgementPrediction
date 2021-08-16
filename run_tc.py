@@ -84,7 +84,10 @@ logger = logging.getLogger(__name__)
 faulthandler.enable()
 
 long_input_bert_types = ['long', 'longformer', 'hierarchical']
+model_types = ['distilbert', 'bert', 'roberta', 'camembert']
 languages = ['de', 'fr', 'it']
+
+logger.warning("This script only supports PyTorch models!")
 
 
 @dataclass
@@ -367,6 +370,22 @@ def main():
         # we need to make space for adding the CLS and SEP token for each segment
         max_length -= max_segments * 2
 
+    def get_encoder_and_classifier(model):
+        if config.model_type not in model_types:
+            raise ValueError(f"{config.model_type} is not supported. "
+                             f"Please use one of the supported model types {model_types}")
+
+        if config.model_type == 'distilbert':
+            encoder = model.distilbert
+            classifier = model.classifier
+        if config.model_type == 'bert':
+            encoder = model.bert
+            classifier = model.classifier
+        if config.model_type in ['camembert', 'xlm-roberta']:
+            encoder = model.roberta
+            classifier = model.classifier
+        return encoder, classifier
+
     def model_init():
         model = AutoModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
@@ -379,17 +398,7 @@ def main():
         # model = BertForSequenceClassification() # for untrained model
 
         if model_args.long_input_bert_type in long_input_bert_types:
-            if config.model_type == 'distilbert':
-                encoder = model.distilbert
-                classifier = model.classifier
-
-            if config.model_type == 'bert':
-                encoder = model.bert
-                classifier = model.classifier
-
-            if config.model_type in ['camembert', 'xlm-roberta']:
-                encoder = model.roberta
-                classifier = model.classifier.out_proj
+            encoder, classifier = get_encoder_and_classifier(model)
 
             if model_args.long_input_bert_type == 'hierarchical':
                 long_input_bert = HierarchicalBert(encoder,
@@ -399,6 +408,15 @@ def main():
                                                    sep_token_id=tokenizer.sep_token_id,
                                                    device=training_args.device,
                                                    seg_encoder_type='lstm')
+
+                if last_checkpoint or not training_args.do_train:
+                    seg_encoder_path = f'{model_args.model_name_or_path}/seg_encoder.bin'
+                    logger.info(f"loading file {seg_encoder_path}")
+                    long_input_bert.seg_encoder.load_state_dict(torch.load(seg_encoder_path))
+
+                    down_project_path = f'{model_args.model_name_or_path}/down_project.bin'
+                    logger.info(f"loading file {down_project_path}")
+                    long_input_bert.down_project.load_state_dict(torch.load(down_project_path))
 
             if model_args.long_input_bert_type == 'long':
                 long_input_bert = LongBert.resize_position_embeddings(encoder,
@@ -415,11 +433,14 @@ def main():
                 if config.model_type in ['camembert', 'xlm-roberta']:
                     model.roberta = long_input_bert
                     if model_args.long_input_bert_type == 'hierarchical':
+                        dense = nn.Linear(config.hidden_size, config.hidden_size)
+                        dense.load_state_dict(classifier.dense.state_dict())  # load weights
                         dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
                         out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
-                        out_proj.load_state_dict(classifier.state_dict())  # load weights
-                        model.classifier = nn.Sequential(dropout, out_proj).to(training_args.device)
+                        out_proj.load_state_dict(classifier.out_proj.state_dict())  # load weights
+                        model.classifier = nn.Sequential(dense, dropout, out_proj).to(training_args.device)
 
+            # NOTE: longformer had quite bad results (probably something is off here)
             if training_args.do_train and model_args.long_input_bert_type == 'longformer':
                 encoder = Longformer.convert2longformer(encoder,
                                                         max_seq_length=max_length,
@@ -633,6 +654,12 @@ def main():
 
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
+        if model_args.long_input_bert_type == 'hierarchical':
+            encoder, _ = get_encoder_and_classifier(trainer.model)
+            # the seg_encoder and down_project are not included in the base model so they need to be saved seperately
+            torch.save(encoder.seg_encoder.state_dict(), f'{training_args.output_dir}/seg_encoder.bin')
+            torch.save(encoder.down_project.state_dict(), f'{training_args.output_dir}/down_project.bin')
+
         if model_args.long_input_bert_type == 'longformer':
             # Amend configuration file
             config_path = f'{training_args.output_dir}/config.json'
@@ -738,7 +765,7 @@ def main():
         logger.info("*** Special Splits ***")
         for experiment, parts in special_splits.items():
             for part, dataset in parts.items():
-                if len(dataset) >= 100:  # we need at least one example but below 100 it does not make much sense
+                if len(dataset) >= 1:  # we need at least one example
                     base_dir = Path(training_args.output_dir) / experiment / part
                     base_dir.mkdir(parents=True, exist_ok=True)
                     preds, labels, metrics = predict(dataset)
