@@ -24,6 +24,9 @@ import math
 import os
 import random
 import sys
+from json import JSONEncoder
+
+import dataclasses
 from pathlib import Path
 
 import wandb
@@ -231,8 +234,7 @@ class ModelArguments:
 
 
 def main():
-    # See all possible arguments in src/transformers/training_args.py
-    # or by passing the --help flag to this script.
+    # See all possible arguments in src/transformers/training_args.py or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
@@ -255,6 +257,25 @@ def main():
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
+
+    # Save all params for better reproducibility
+    experiment_params = {
+        "model_args": dataclasses.asdict(model_args),
+        "data_args": dataclasses.asdict(data_args),
+        "training_args": dataclasses.asdict(training_args),
+        "adapter_args": dataclasses.asdict(adapter_args),
+    }
+
+    class SimpleEncoder(JSONEncoder):
+        def default(self, o):
+            try:
+                return o.__dict__
+            except AttributeError:
+                return str(o)
+
+    Path(training_args.output_dir).mkdir(parents=True, exist_ok=True)
+    with open(f'{training_args.output_dir}/experiment_params.json', 'w') as file:
+        json.dump(experiment_params, file, indent=4, cls=SimpleEncoder)
 
     # Setup distant debugging if needed
     if data_args.server_ip and data_args.server_port:
