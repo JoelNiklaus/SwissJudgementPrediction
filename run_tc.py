@@ -1,21 +1,9 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-""" Finetuning multi-lingual models on SJP (e.g. Bert, DistilBERT, XLM).
-    Adapted from `examples/text-classification/run_glue.py`"""
+"""
+Finetuning multi-lingual models on SJP (e.g. Bert, DistilBERT, XLM).
+Adapted from `examples/text-classification/run_glue.py`
+"""
 import faulthandler
 import glob
 import json
@@ -53,15 +41,19 @@ from torch.nn import CrossEntropyLoss
 
 from datasets import load_dataset, concatenate_datasets
 import transformers
+import transformers.adapters.composition as ac
 from transformers import (
+    AdapterConfig,
     AutoConfig,
     AutoModelForSequenceClassification,
+    AutoModelWithHeads,
     AutoTokenizer,
     DataCollatorWithPadding,
     EvalPrediction,
     EarlyStoppingCallback,
     HfArgumentParser,
     LongformerForSequenceClassification,
+    MultiLingAdapterArguments,
     Trainer,
     TrainingArguments,
     default_data_collator,
@@ -79,8 +71,8 @@ os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
 os.environ['WANDB_MODE'] = "online"
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # use this when debugging
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.6.0.dev0")
+# Will error if the minimal version of transformers is not installed. Remove at your own risks.
+check_min_version("4.8.2")
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +85,7 @@ languages = ['de', 'fr', 'it']
 logger.warning("This script only supports PyTorch models!")
 
 
+# TODO make separate files for the dataclasses
 @dataclass
 class DataArguments:
     """
@@ -128,6 +121,17 @@ class DataArguments:
         metadata={
             "help": "Whether to test on the special splits or not."
         },
+    )
+    problem_type: str = field(
+        default="single_label_classification",
+        metadata={
+            "help": "Problem type for XxxForSequenceClassification models. "
+                    "Can be one of (\"regression\", \"single_label_classification\", \"multi_label_classification\")."
+        },
+    )
+    task_name: Optional[str] = field(
+        default="sjp",  # SwissJudgementPrediction
+        metadata={"help": "The name of the task to train on."}
     )
     max_train_samples: Optional[int] = field(
         default=None,
@@ -167,7 +171,7 @@ class ModelArguments:
         metadata={"help": f"Which bert type to use for handling long text inputs. "
                           f"Currently the following types are supported: {long_input_bert_types}."},
     )
-    language: str = field(
+    evaluation_language: str = field(
         default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None. "
                                         "Can also be set to 'all'"},
     )
@@ -213,13 +217,6 @@ class ModelArguments:
                     "with private models)."
         },
     )
-    problem_type: str = field(
-        default="single_label_classification",
-        metadata={
-            "help": "Problem type for XxxForSequenceClassification models. "
-                    "Can be one of (\"regression\", \"single_label_classification\", \"multi_label_classification\")."
-        },
-    )
     prediction_threshold: int = field(
         default=0,
         metadata={
@@ -237,8 +234,15 @@ def main():
     # See all possible arguments in src/transformers/training_args.py or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments, MultiLingAdapterArguments))
+    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        # If we pass only one argument to the script and it's the path to a json file,
+        # let's parse it to get our arguments.
+        model_args, data_args, training_args, adapter_args = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1])
+        )
+    else:
+        model_args, data_args, training_args, adapter_args = parser.parse_args_into_dataclasses()
 
     # for better charts when we have a group run with multiple seeds
     os.environ["WANDB_RUN_GROUP"] = training_args.run_name[:-2]  # remove last two characters "-{seed}"
@@ -310,8 +314,8 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    langs = [model_args.language]
-    if model_args.language == 'all':
+    langs = [model_args.evaluation_language]
+    if model_args.evaluation_language == 'all':
         langs = languages
         train_datasets = []
         eval_datasets = []
@@ -347,17 +351,17 @@ def main():
             label_list = list(label_dict["label2id"].keys())
         num_labels = len(label_list)
 
-        if model_args.language == 'all':
+        if model_args.evaluation_language == 'all':
             train_datasets.append(train_dataset)
             eval_datasets.append(eval_dataset)
             predict_datasets.append(predict_dataset)
 
-    if model_args.language == 'all':
+    if model_args.evaluation_language == 'all':
         train_dataset = concatenate_datasets(train_datasets)
         eval_dataset = concatenate_datasets(eval_datasets)
         predict_dataset = concatenate_datasets(predict_datasets)
 
-    if model_args.problem_type == 'multi_label_classification':
+    if data_args.problem_type == 'multi_label_classification':
         mlb = MultiLabelBinarizer().fit([label_list])
 
     # Load pretrained model and tokenizer
@@ -370,7 +374,7 @@ def main():
         id2label=label_dict["id2label"],
         label2id=label_dict["label2id"],
         finetuning_task=finetuning_task,
-        problem_type=model_args.problem_type,
+        problem_type=data_args.problem_type,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
@@ -398,13 +402,13 @@ def main():
 
         if config.model_type == 'distilbert':
             encoder = model.distilbert
-            classifier = model.classifier
         if config.model_type == 'bert':
             encoder = model.bert
-            classifier = model.classifier
         if config.model_type in ['camembert', 'xlm-roberta']:
             encoder = model.roberta
-            classifier = model.classifier
+
+        classifier = model.classifier
+        # classifier = model.heads
         return encoder, classifier
 
     def model_init():
@@ -417,6 +421,72 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
         )
         # model = BertForSequenceClassification() # for untrained model
+
+        # TODO use more flexible AutoModelWithHeads for better adapter support
+        # model = AutoModelWithHeads.from_pretrained(
+        #    model_args.model_name_or_path,
+        #    from_tf=bool(".ckpt" in model_args.model_name_or_path),
+        #    config=config,
+        #    cache_dir=model_args.cache_dir,
+        #    revision=model_args.model_revision,
+        #    use_auth_token=True if model_args.use_auth_token else None,
+        # )
+        # model.add_classification_head(
+        #    data_args.task_name,
+        #    num_labels=num_labels,
+        #    id2label=label_dict['id2label'],
+        # )
+
+        # Setup adapters
+        if adapter_args.train_adapter:
+            task_name = data_args.task_name
+            # check if adapter already exists, otherwise add it
+            if task_name not in model.config.adapters:
+                # resolve the adapter config
+                adapter_config = AdapterConfig.load(
+                    adapter_args.adapter_config,
+                    non_linearity=adapter_args.adapter_non_linearity,
+                    reduction_factor=adapter_args.adapter_reduction_factor,
+                )
+                # load a pre-trained from Hub if specified
+                if adapter_args.load_adapter:
+                    model.load_adapter(
+                        adapter_args.load_adapter,
+                        config=adapter_config,
+                        load_as=task_name,
+                    )
+                # otherwise, add a fresh adapter
+                else:
+                    model.add_adapter(task_name, config=adapter_config)
+            # optionally load a pre-trained language adapter
+            if adapter_args.load_lang_adapter:
+                # resolve the language adapter config
+                lang_adapter_config = AdapterConfig.load(
+                    adapter_args.lang_adapter_config,
+                    non_linearity=adapter_args.lang_adapter_non_linearity,
+                    reduction_factor=adapter_args.lang_adapter_reduction_factor,
+                )
+                # load the language adapter from Hub
+                lang_adapter_name = model.load_adapter(
+                    adapter_args.load_lang_adapter,
+                    config=lang_adapter_config,
+                    load_as=adapter_args.language,
+                )
+            else:
+                lang_adapter_name = None
+            # Freeze all model weights except of those of this adapter
+            model.train_adapter([task_name])
+            # Set the adapters to be used in every forward pass
+            if lang_adapter_name:
+                model.set_active_adapters(ac.Stack(lang_adapter_name, task_name))
+            else:
+                model.set_active_adapters(task_name)
+        else:
+            if adapter_args.load_adapter or adapter_args.load_lang_adapter:
+                raise ValueError(
+                    "Adapters can only be loaded in adapters training mode."
+                    "Use --train_adapter to enable adapter training"
+                )
 
         if model_args.long_input_bert_type in long_input_bert_types:
             encoder, classifier = get_encoder_and_classifier(model)
@@ -492,9 +562,9 @@ def main():
                               return_token_type_ids=True)
 
         # Map labels to IDs
-        if model_args.problem_type == 'multi_label_classification':
+        if data_args.problem_type == 'multi_label_classification':
             tokenized["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
-        if model_args.problem_type == 'single_label_classification':
+        if data_args.problem_type == 'single_label_classification':
             if label_dict["label2id"] is not None and "label" in batch:
                 tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
         return tokenized
@@ -541,11 +611,11 @@ def main():
     def compute_metrics(p: EvalPrediction):
         labels = p.label_ids
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        if model_args.problem_type == 'multi_label_classification':
+        if data_args.problem_type == 'multi_label_classification':
             # for multi_label_classification we need boolean arrays for each example
             labels = labels_to_bools(labels)
             preds = preds_to_bools(preds)
-        if model_args.problem_type == 'single_label_classification':
+        if data_args.problem_type == 'single_label_classification':
             preds = np.argmax(preds, axis=1)
 
         accuracy = accuracy_score(labels, preds)
@@ -675,6 +745,8 @@ def main():
 
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
+        # TODO here it is not saved correctly for the hierarchical model
+
         if model_args.long_input_bert_type == 'hierarchical':
             encoder, _ = get_encoder_and_classifier(trainer.model)
             # the seg_encoder and down_project are not included in the base model so they need to be saved seperately
@@ -718,9 +790,9 @@ def main():
         remove_metrics(metrics, 'test')
 
         preds = preds[0] if isinstance(preds, tuple) else preds
-        if model_args.problem_type == 'multi_label_classification':
+        if data_args.problem_type == 'multi_label_classification':
             preds, labels = preds_to_bools(preds), labels_to_bools(labels)
-        if model_args.problem_type == 'single_label_classification':
+        if data_args.problem_type == 'single_label_classification':
             preds = np.argmax(preds, axis=1)
         return preds, labels, metrics
 
@@ -732,18 +804,18 @@ def main():
             with open(output_predict_file, "w") as writer:
                 writer.write("index\tprediction\n")
                 for index, pred in enumerate(preds):
-                    if model_args.problem_type == 'multi_label_classification':
+                    if data_args.problem_type == 'multi_label_classification':
                         pred_strings = mlb.inverse_transform(np.array([pred]))[0]
-                    if model_args.problem_type == 'single_label_classification':
+                    if data_args.problem_type == 'single_label_classification':
                         pred_strings = [label_dict["id2label"][pred]]
                     writer.write(f"{index}\t{pred_strings}\n")
 
             # write report file
             with open(output_report_file, "w") as writer:
-                if model_args.problem_type == 'multi_label_classification':
+                if data_args.problem_type == 'multi_label_classification':
                     title = "Multilabel Confusion Matrix\n"
                     matrices = multilabel_confusion_matrix(labels, preds)
-                if model_args.problem_type == 'single_label_classification':
+                if data_args.problem_type == 'single_label_classification':
                     title = "Singlelabel Confusion Matrix\n"
                     matrices = [confusion_matrix(labels, preds)]
 
@@ -800,7 +872,7 @@ def main():
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
         if data_args.task_name is not None:
-            kwargs["language"] = model_args.language
+            kwargs["language"] = model_args.evaluation_language
             kwargs["dataset_tags"] = "sjp"
             kwargs["dataset_args"] = data_args.task_name
             kwargs["dataset"] = f"SJP {data_args.task_name.upper()}"

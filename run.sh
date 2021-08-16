@@ -104,7 +104,7 @@ python run_tc.py
   --long_input_bert_type $TYPE
   --learning_rate $LR
   --seed $SEED
-  --language $LANGUAGE
+  --evaluation_language $LANGUAGE
   --do_train $TRAIN
   --do_eval
   --do_predict
