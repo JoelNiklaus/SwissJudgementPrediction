@@ -20,9 +20,6 @@ from pathlib import Path
 import wandb
 import numpy as np
 
-from dataclasses import dataclass, field
-from typing import Optional
-
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
@@ -46,7 +43,6 @@ from transformers import (
     AdapterConfig,
     AutoConfig,
     AutoModelForSequenceClassification,
-    AutoModelWithHeads,
     AutoTokenizer,
     DataCollatorWithPadding,
     EvalPrediction,
@@ -65,6 +61,8 @@ from transformers.utils import check_min_version
 import LongBert
 import Longformer
 from HierarchicalBert import HierarchicalBert
+from data_arguments import DataArguments
+from model_arguments import ModelArguments
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
 os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
@@ -83,151 +81,6 @@ model_types = ['distilbert', 'bert', 'roberta', 'camembert']
 languages = ['de', 'fr', 'it']
 
 logger.warning("This script only supports PyTorch models!")
-
-
-# TODO make separate files for the dataclasses
-@dataclass
-class DataArguments:
-    """
-    Arguments pertaining to what data we are going to input our model for training and eval.
-
-    Using `HfArgumentParser` we can turn this class
-    into argparse arguments to be able to specify them on
-    the command line.
-    """
-    tune_hyperparams: bool = field(
-        default=False, metadata={"help": "Whether or not to tune the hyperparameters before training."},
-    )
-    max_seq_length: Optional[int] = field(
-        default=512,
-        metadata={
-            "help": "The maximum total input sequence length after tokenization. Sequences longer "
-                    "than this will be truncated, sequences shorter will be padded."
-        },
-    )
-    overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."},
-    )
-    pad_to_max_length: bool = field(
-        default=True,  # TODO change to false again if everything works
-        metadata={
-            "help": "Whether to pad all samples to `max_seq_length`. "
-                    "If False, will pad the samples dynamically when batching to the maximum length in the batch. "
-                    "Padding to 'longest' may lead to problems in hierarchical and long bert."
-        },
-    )
-    test_on_special_splits: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to test on the special splits or not."
-        },
-    )
-    problem_type: str = field(
-        default="single_label_classification",
-        metadata={
-            "help": "Problem type for XxxForSequenceClassification models. "
-                    "Can be one of (\"regression\", \"single_label_classification\", \"multi_label_classification\")."
-        },
-    )
-    task_name: Optional[str] = field(
-        default="sjp",  # SwissJudgementPrediction
-        metadata={"help": "The name of the task to train on."}
-    )
-    max_train_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
-                    "value if set."
-        },
-    )
-    max_eval_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
-                    "value if set."
-        },
-    )
-    max_predict_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "For debugging purposes or quicker training, truncate the number of prediction examples to this "
-                    "value if set."
-        },
-    )
-    server_ip: Optional[str] = field(default=None, metadata={"help": "For distant debugging."})
-    server_port: Optional[str] = field(default=None, metadata={"help": "For distant debugging."})
-
-
-@dataclass
-class ModelArguments:
-    """
-    Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
-    """
-    model_name_or_path: str = field(
-        default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"},
-    )
-    long_input_bert_type: str = field(
-        default=None,
-        metadata={"help": f"Which bert type to use for handling long text inputs. "
-                          f"Currently the following types are supported: {long_input_bert_types}."},
-    )
-    evaluation_language: str = field(
-        default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None. "
-                                        "Can also be set to 'all'"},
-    )
-    train_language: Optional[str] = field(
-        default=None, metadata={"help": "Train language if it is different from the evaluation language."},
-    )
-    config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"},
-    )
-    tokenizer_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"},
-    )
-    cache_dir: Optional[str] = field(
-        default=None,
-        metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
-    )
-    do_lower_case: Optional[bool] = field(
-        default=False,
-        metadata={"help": "arg to indicate if tokenizer should do lower case in AutoTokenizer.from_pretrained()"},
-    )
-    label_imbalance_method: Optional[str] = field(
-        default=None,
-        metadata={"help": "Whether or not to use any method to combat label imbalance. "
-                          "Available are 'class_weights', 'oversampling' and 'undersampling'."
-                          "'class_weights' applies a special term to the loss function which gives more weight to the minority class. "
-                          "(Because this messes with the loss function, label smoothing does not work if this is enabled) "
-                          "'oversampling' oversamples the minority class to match the number of samples in the majority class. "
-                          "'undersampling' undersamples the majority class to match the number of samples in the minority class."
-                  },
-    )
-    use_fast_tokenizer: bool = field(
-        default=True,
-        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
-    )
-    model_revision: str = field(
-        default="main",
-        metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
-    )
-    use_auth_token: bool = field(
-        default=False,
-        metadata={
-            "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-                    "with private models)."
-        },
-    )
-    prediction_threshold: int = field(
-        default=0,
-        metadata={
-            "help": "Used in multilabel classification for determining when a given label is assigned. "
-                    "This is normally 0 when using the tanh function in the output layer "
-                    "and 0.5 if the sigmoid function is used."
-                    "This is a hyperparameter which can additionally be tuned to improve the "
-                    "multilabel classification performance as discussed here: "
-                    "https://www.csie.ntu.edu.tw/~cjlin/papers/threshold.pdf"
-        },
-    )
 
 
 def main():
