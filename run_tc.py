@@ -62,7 +62,7 @@ import LongBert
 import Longformer
 from HierarchicalBert import HierarchicalBert
 from data_arguments import DataArguments
-from model_arguments import ModelArguments
+from model_arguments import ModelArguments, long_input_bert_types
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
 os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
@@ -76,7 +76,6 @@ logger = logging.getLogger(__name__)
 
 faulthandler.enable()
 
-long_input_bert_types = ['long', 'longformer', 'hierarchical']
 model_types = ['distilbert', 'bert', 'roberta', 'camembert']
 languages = ['de', 'fr', 'it']
 

@@ -2,8 +2,8 @@ from typing import Optional
 
 from dataclasses import dataclass, field
 
-from run_tc import long_input_bert_types
 
+long_input_bert_types = ['long', 'longformer', 'hierarchical']
 
 @dataclass
 class ModelArguments:
