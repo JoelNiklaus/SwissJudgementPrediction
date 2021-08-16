@@ -38,6 +38,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/data/de/special_splits/input_length/test-between(2049,4096).csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/data/de/special_splits/input_length/test-between(4097,8192).csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/data/fr/reports/all/legal_area_distribution.csv">
           <value>
             <Attribute>
@@ -88,6 +102,13 @@
           </value>
         </entry>
         <entry key="/data/fr/reports/val/single_label_distribution.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/data/fr/special_splits/input_length/test-between(4097,8192).csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -158,6 +179,13 @@
           </value>
         </entry>
         <entry key="/train_experiments.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="&lt;4ea8dfdc-2d71-45ca-91f7-94e02deada83&gt;/SwissJudgementPrediction/data/de/special_splits/legal_area/test-insurance_law.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
