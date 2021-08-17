@@ -353,15 +353,6 @@ def main():
                                                    device=training_args.device,
                                                    seg_encoder_type='lstm')
 
-                if last_checkpoint or not training_args.do_train:
-                    seg_encoder_path = f'{model_args.model_name_or_path}/seg_encoder.bin'
-                    logger.info(f"loading file {seg_encoder_path}")
-                    long_input_bert.seg_encoder.load_state_dict(torch.load(seg_encoder_path))
-
-                    down_project_path = f'{model_args.model_name_or_path}/down_project.bin'
-                    logger.info(f"loading file {down_project_path}")
-                    long_input_bert.down_project.load_state_dict(torch.load(down_project_path))
-
             if model_args.long_input_bert_type == 'long':
                 long_input_bert = LongBert.resize_position_embeddings(encoder,
                                                                       max_length=max_length,
@@ -383,6 +374,12 @@ def main():
                         out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
                         out_proj.load_state_dict(classifier.out_proj.state_dict())  # load weights
                         model.classifier = nn.Sequential(dense, dropout, out_proj).to(training_args.device)
+
+            if last_checkpoint or not training_args.do_train:
+                # Make sure we really load all the weights after we modified the models
+                model_path = f'{model_args.model_name_or_path}/model.bin'
+                logger.info(f"loading file {model_path}")
+                model.load_state_dict(torch.load(model_path))
 
             # NOTE: longformer had quite bad results (probably something is off here)
             if training_args.do_train and model_args.long_input_bert_type == 'longformer':
@@ -598,13 +595,8 @@ def main():
 
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
-        # TODO here it is not saved correctly for the hierarchical model
-
-        if model_args.long_input_bert_type == 'hierarchical':
-            encoder, _ = get_encoder_and_classifier(trainer.model)
-            # the seg_encoder and down_project are not included in the base model so they need to be saved seperately
-            torch.save(encoder.seg_encoder.state_dict(), f'{training_args.output_dir}/seg_encoder.bin')
-            torch.save(encoder.down_project.state_dict(), f'{training_args.output_dir}/down_project.bin')
+        # save entire model ourselves just to be safe
+        torch.save(trainer.model.state_dict(), f'{training_args.output_dir}/model.bin')
 
         if model_args.long_input_bert_type == 'longformer':
             # Amend configuration file
