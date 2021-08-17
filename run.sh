@@ -93,7 +93,7 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # disable training if we are not in train mode
 [ "$MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
-[ "$MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
+[ "$MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="$BASE_DIR/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
 
 CMD="
 python run_tc.py

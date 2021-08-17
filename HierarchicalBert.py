@@ -54,6 +54,7 @@ class HierarchicalBert(nn.Module):
                 output_attentions=None,
                 output_hidden_states=None,
                 return_dict=None,
+                adapter_names=None,
                 ):
         # Hypothetical example (samples, max_document_size) --> (16, 5110) and max_segments == 10
         # Reshape samples into segments # (samples, segments, max_segment_length) --> (16, 10, 510)
