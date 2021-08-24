@@ -16,11 +16,13 @@ model_names = {  # distilbert-base-multilingual-cased, google/rembert, google/mt
 }
 types = ['standard', 'hierarchical', 'long']  # longformer
 languages = ['de', 'fr', 'it', 'all']
+train_languages = ['de', 'all']
 
-experiments = []
+train_experiments = []
 for lang in languages:
     for type in types:
         for model_name in model_names[lang]:
-            experiments.append({"model_name": model_name, "type": type, "lang": lang, "status": ""})
-df = pd.DataFrame(experiments)
+            experiment = {"model_name": model_name, "type": type, "lang": lang, "status": ""}
+            train_experiments.append(experiment)
+df = pd.DataFrame(train_experiments)
 df.to_csv("train_experiments.csv", index=False)
