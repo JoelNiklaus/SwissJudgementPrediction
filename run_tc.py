@@ -695,8 +695,8 @@ def main():
                                                target_names=label_list, labels=list(label_dict['label2id'].values()))
                 write_report_section(writer, "Classification Report", str(report))
 
-                content = f"False: {np.mean(false_confidences)}%\n" \
-                          f"True: {np.mean(true_confidences)}%\n"
+                content = f"False: {np.mean(false_confidences)}% +/- {np.std(false_confidences)}\n" \
+                          f"True: {np.mean(true_confidences)}% +/- {np.std(true_confidences)}\n"
                 write_report_section(writer, "Mean confidence of predictions", content)
 
     # Prediction
