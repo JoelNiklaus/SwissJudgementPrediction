@@ -6,7 +6,9 @@ import pandas as pd
 # TODO experiment with randomly initialized transformer
 # TODO do we need to experiment with a BiLSTM model?
 
-model_names = {  # distilbert-base-multilingual-cased,
+# TODO try using data augmentation: https://arxiv.org/abs/2105.03075
+
+model_names = {  # distilbert-base-multilingual-cased, google/rembert, google/mt5-base
     'de': ['xlm-roberta-base', 'deepset/gbert-base'],
     'fr': ['xlm-roberta-base', 'camembert/camembert-base-ccnet'],
     'it': ['xlm-roberta-base', 'Musixmatch/umberto-commoncrawl-cased-v1'],  # dbmdz/bert-base-italian-cased

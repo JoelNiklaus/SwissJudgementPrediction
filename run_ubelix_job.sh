@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:rtx3090:1
 #SBATCH --qos=job_gpu_preempt
 #SBATCH --partition=gpu
-#SBATCH --array=1-5%1
+#SBATCH --array=1-5%5
 
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt
@@ -20,6 +20,8 @@
 # $1: model_name, $2: type, $3: language, $4: train_language, $5: mode, $6 special_splits
 bash run.sh --model_name=$1 --type=$2 --language=$3 --train_language=$4 --mode=$5 --special_splits=$6 \
   --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
+
+# Example:   bash run.sh --model_name=bert-base-multilingual-cased --type=standard --language=it --train_language=it --mode=test --special_splits=False --seed=1 --debug=True
 
 # IMPORTANT:
 # Run with                  sbatch run_ubelix_job.sl
