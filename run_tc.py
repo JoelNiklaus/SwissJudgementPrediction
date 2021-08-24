@@ -32,9 +32,10 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.utils import compute_class_weight
 
 import torch
+from sklearn.utils.extmath import softmax
 from torch.cuda.amp import autocast
 from torch import nn
-from torch.nn import CrossEntropyLoss, Softmax
+from torch.nn import CrossEntropyLoss
 
 from datasets import load_dataset, concatenate_datasets
 import transformers
@@ -457,7 +458,7 @@ def main():
         return [pl > model_args.prediction_threshold for pl in preds]
 
     def process_results(preds, labels):
-        probs = Softmax(dim=1)(torch.tensor(preds))
+        probs = softmax(preds)
         if data_args.problem_type == 'multi_label_classification':
             # for multi_label_classification we need boolean arrays for each example
             preds, labels = preds_to_bools(preds), labels_to_bools(labels)
@@ -697,10 +698,6 @@ def main():
                 content = f"False: {np.mean(false_confidences)}%\n" \
                           f"True: {np.mean(true_confidences)}%\n"
                 write_report_section(writer, "Mean confidence of predictions", content)
-
-
-
-
 
     # Prediction
     if training_args.do_predict and not data_args.tune_hyperparams:
