@@ -34,7 +34,7 @@ from sklearn.utils import compute_class_weight
 import torch
 from torch.cuda.amp import autocast
 from torch import nn
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, Softmax
 
 from datasets import load_dataset, concatenate_datasets
 import transformers
@@ -456,17 +456,21 @@ def main():
     def preds_to_bools(preds):
         return [pl > model_args.prediction_threshold for pl in preds]
 
+    def process_results(preds, labels):
+        probs = Softmax(dim=1)(torch.tensor(preds))
+        if data_args.problem_type == 'multi_label_classification':
+            # for multi_label_classification we need boolean arrays for each example
+            preds, labels = preds_to_bools(preds), labels_to_bools(labels)
+        if data_args.problem_type == 'single_label_classification':
+            preds = np.argmax(preds, axis=1)
+        return preds, labels, probs
+
     # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
     # predictions and label_ids field) and has to return a dictionary string to float.
     def compute_metrics(p: EvalPrediction):
         labels = p.label_ids
-        preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        if data_args.problem_type == 'multi_label_classification':
-            # for multi_label_classification we need boolean arrays for each example
-            labels = labels_to_bools(labels)
-            preds = preds_to_bools(preds)
-        if data_args.problem_type == 'single_label_classification':
-            preds = np.argmax(preds, axis=1)
+        preds = p.predictions
+        preds, labels, probs = process_results(preds, labels)
 
         accuracy = accuracy_score(labels, preds)
         # weighted averaging is a better evaluation metric for imbalanced label distributions
@@ -635,25 +639,43 @@ def main():
         remove_metrics(metrics, 'test')
 
         preds = preds[0] if isinstance(preds, tuple) else preds
-        if data_args.problem_type == 'multi_label_classification':
-            preds, labels = preds_to_bools(preds), labels_to_bools(labels)
-        if data_args.problem_type == 'single_label_classification':
-            preds = np.argmax(preds, axis=1)
-        return preds, labels, metrics
+        preds, labels, probs = process_results(preds, labels)
+        return preds, labels, probs, metrics
 
-    def write_reports(base_dir, preds, labels):
+    def write_report_section(writer, title, content):
+        writer.write(f"{title}\n")
+        writer.write("=" * 75 + "\n\n")
+        writer.write(content)
+        writer.write("\n" * 3)
+
+    def pred2label(pred):
+        if data_args.problem_type == 'multi_label_classification':
+            return mlb.inverse_transform(np.array([pred]))[0]
+        if data_args.problem_type == 'single_label_classification':
+            return label_dict["id2label"][pred]
+
+    def write_reports(base_dir, preds, labels, probs):
         output_predict_file = os.path.join(base_dir, "predictions.txt")
         output_report_file = os.path.join(base_dir, "prediction_report.txt")
+        true_confidences, false_confidences = [], []
         if trainer.is_world_process_zero():
             # write predictions file
             with open(output_predict_file, "w") as writer:
-                writer.write("index\tprediction\n")
+                writer.write("index\tprediction\tlabel\tis_correct\tconfidence\terror\n")
                 for index, pred in enumerate(preds):
-                    if data_args.problem_type == 'multi_label_classification':
-                        pred_strings = mlb.inverse_transform(np.array([pred]))[0]
-                    if data_args.problem_type == 'single_label_classification':
-                        pred_strings = [label_dict["id2label"][pred]]
-                    writer.write(f"{index}\t{pred_strings}\n")
+                    confidence = probs[index][pred]
+                    is_correct = pred == labels[index]
+                    error = 1 - confidence if is_correct else confidence
+                    if is_correct:
+                        true_confidences.append(confidence)
+                    else:
+                        false_confidences.append(confidence)
+                    writer.write(f"{index}\t"
+                                 f"{pred2label(pred)}\t"
+                                 f"{pred2label(labels[index])}\t"
+                                 f"{is_correct}\t"
+                                 f"{confidence}\t"
+                                 f"{error}\n")
 
             # write report file
             with open(output_report_file, "w") as writer:
@@ -663,24 +685,27 @@ def main():
                 if data_args.problem_type == 'single_label_classification':
                     title = "Singlelabel Confusion Matrix\n"
                     matrices = [confusion_matrix(labels, preds)]
-
-                writer.write(title)
-                writer.write("=" * 75 + "\n\n")
-                writer.write("reading help:\nTN FP\nFN TP\n\n")
+                content = "reading help:\nTN FP\nFN TP\n\n"
                 for i in range(len(matrices)):
-                    writer.write(f"{label_list[i]}\n{str(matrices[i])}\n")
-                writer.write("\n" * 3)
+                    content += f"{label_list[i]}\n{str(matrices[i])}\n"
+                write_report_section(writer, title, content)
 
-                writer.write("Classification Report\n")
-                writer.write("=" * 75 + "\n\n")
                 report = classification_report(labels, preds, digits=4,
                                                target_names=label_list, labels=list(label_dict['label2id'].values()))
-                writer.write(str(report))
+                write_report_section(writer, "Classification Report", str(report))
+
+                content = f"False: {np.mean(false_confidences)}%\n" \
+                          f"True: {np.mean(true_confidences)}%\n"
+                write_report_section(writer, "Mean confidence of predictions", content)
+
+
+
+
 
     # Prediction
     if training_args.do_predict and not data_args.tune_hyperparams:
         logger.info("*** Predict ***")
-        preds, labels, metrics = predict(predict_dataset)
+        preds, labels, probs, metrics = predict(predict_dataset)
 
         max_predict_samples = (
             data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
@@ -696,7 +721,7 @@ def main():
                        if "mem" not in k and k != "test_samples"}
             wandb.log(metrics)  # log test metrics to wandb
 
-        write_reports(training_args.output_dir, preds, labels)
+        write_reports(training_args.output_dir, preds, labels, probs)
 
     # Special Splits
     if data_args.test_on_special_splits:
@@ -706,13 +731,13 @@ def main():
                 if len(dataset) >= 1:  # we need at least one example
                     base_dir = Path(training_args.output_dir) / experiment / part
                     base_dir.mkdir(parents=True, exist_ok=True)
-                    preds, labels, metrics = predict(dataset)
+                    preds, labels, probs, metrics = predict(dataset)
                     if "wandb" in training_args.report_to:
                         prefix = f"{experiment}/{part}/"
                         metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
                         metrics[f'{prefix}support'] = len(dataset)
                         wandb.log(metrics)  # log test metrics to wandb
-                    write_reports(base_dir, preds, labels)
+                    write_reports(base_dir, preds, labels, probs)
 
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
