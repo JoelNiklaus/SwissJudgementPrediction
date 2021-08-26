@@ -458,6 +458,7 @@ def main():
         return [pl > model_args.prediction_threshold for pl in preds]
 
     def process_results(preds, labels):
+        preds = preds[0] if isinstance(preds, tuple) else preds
         probs = softmax(preds)
         if data_args.problem_type == 'multi_label_classification':
             # for multi_label_classification we need boolean arrays for each example
@@ -639,7 +640,6 @@ def main():
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
         remove_metrics(metrics, 'test')
 
-        preds = preds[0] if isinstance(preds, tuple) else preds
         preds, labels, probs = process_results(preds, labels)
         return preds, labels, probs, metrics
 
