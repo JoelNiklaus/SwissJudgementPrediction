@@ -19,6 +19,7 @@ from pathlib import Path
 
 import wandb
 import numpy as np
+import pandas as pd
 
 from sklearn.metrics import (
     accuracy_score,
@@ -542,6 +543,7 @@ def main():
         random_ids = np.random.choice(minority_len, remaining_minority_samples, replace=False)
         datasets.append(label_datasets[minority_id].select(random_ids))
         train_dataset = concatenate_datasets(datasets)
+
     if training_args.do_train and model_args.label_imbalance_method == 'undersampling':
         logger.info("Undersampling the majority class")
         random_ids = np.random.choice(majority_len, minority_len, replace=False)
@@ -656,35 +658,38 @@ def main():
             return label_dict["id2label"][pred]
 
     def write_reports(base_dir, preds, labels, probs):
-        output_predict_file = os.path.join(base_dir, "predictions.txt")
-        output_report_file = os.path.join(base_dir, "prediction_report.txt")
-        true_confidences, false_confidences = [], []
         if trainer.is_world_process_zero():
-            # write predictions file
-            with open(output_predict_file, "w") as writer:
-                writer.write("index\tprediction\tlabel\tis_correct\tconfidence\terror\n")
-                for index, pred in enumerate(preds):
-                    confidence = probs[index][pred]
-                    is_correct = pred == labels[index]
-                    error = 1 - confidence if is_correct else confidence
-                    if is_correct:
-                        true_confidences.append(confidence)
-                    else:
-                        false_confidences.append(confidence)
-                    writer.write(f"{index}\t"
-                                 f"{pred2label(pred)}\t"
-                                 f"{pred2label(labels[index])}\t"
-                                 f"{is_correct}\t"
-                                 f"{confidence}\t"
-                                 f"{error}\n")
+            true_confidences, false_confidences = [], []
+            # write predictions to csv
+            result = {"index": [], "prediction": [], "label": [], "is_correct": [], "confidence": [], "error": []}
+            for index, pred in enumerate(preds):
+                confidence = probs[index][pred]
+                is_correct = pred == labels[index]
+                error = 1 - confidence if is_correct else confidence
+                if is_correct:
+                    true_confidences.append(confidence)
+                else:
+                    false_confidences.append(confidence)
+                result['index'].append(index)
+                result['prediction'].append(pred2label(pred))
+                result['label'].append(pred2label(labels[index]))
+                result['is_correct'].append(is_correct)
+                result['confidence'].append(confidence)
+                result['error'].append(error)
+            pd.DataFrame.from_dict(result).to_csv(f'{base_dir}/predictions.csv')
+
+            # write confidences to csv
+            confidences = {"correct": {"mean": np.mean(true_confidences), "std": np.std(true_confidences)},
+                           "incorrect": {"mean": np.mean(false_confidences), "std": np.std(false_confidences)}}
+            pd.DataFrame.from_dict(confidences, orient='index').to_csv(f'{base_dir}/confidences.csv')
 
             # write report file
-            with open(output_report_file, "w") as writer:
+            with open(f'{base_dir}/prediction_report.txt', "w") as writer:
                 if data_args.problem_type == 'multi_label_classification':
-                    title = "Multilabel Confusion Matrix\n"
+                    title = "Multilabel Confusion Matrix"
                     matrices = multilabel_confusion_matrix(labels, preds)
                 if data_args.problem_type == 'single_label_classification':
-                    title = "Singlelabel Confusion Matrix\n"
+                    title = "Singlelabel Confusion Matrix"
                     matrices = [confusion_matrix(labels, preds)]
                 content = "reading help:\nTN FP\nFN TP\n\n"
                 for i in range(len(matrices)):
@@ -695,8 +700,8 @@ def main():
                                                target_names=label_list, labels=list(label_dict['label2id'].values()))
                 write_report_section(writer, "Classification Report", str(report))
 
-                content = f"False: {np.mean(false_confidences)}% +/- {np.std(false_confidences)}\n" \
-                          f"True: {np.mean(true_confidences)}% +/- {np.std(true_confidences)}\n"
+                content = f"correct:\t{np.mean(true_confidences)}%\t+/-\t{np.std(true_confidences)}\n" \
+                          f"incorrect:\t{np.mean(false_confidences)}%\t+/-\t{np.std(false_confidences)}\n"
                 write_report_section(writer, "Mean confidence of predictions", content)
 
     # Prediction
