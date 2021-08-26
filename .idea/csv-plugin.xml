@@ -192,6 +192,27 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="&lt;4ea8dfdc-2d71-45ca-91f7-94e02deada83&gt;/SwissJudgementPrediction/sjp/test/bert-base-multilingual-cased-standard/de/all/1/confidences.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="&lt;4ea8dfdc-2d71-45ca-91f7-94e02deada83&gt;/SwissJudgementPrediction/sjp/test/bert-base-multilingual-cased-standard/de/all/4/confidences.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="&lt;4ea8dfdc-2d71-45ca-91f7-94e02deada83&gt;/SwissJudgementPrediction/sjp/test/bert-base-multilingual-cased-standard/de/all/4/predictions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
       </map>
     </option>
   </component>
