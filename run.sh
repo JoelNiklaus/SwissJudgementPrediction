@@ -81,12 +81,14 @@ else # either 'hierarchical' or 'longformer'
   BATCH_SIZE=4
 fi
 if [[ "$MODEL_NAME" =~ distilbert ]]; then
-    BATCH_SIZE=$(($BATCH_SIZE * 2))
+  BATCH_SIZE=$(($BATCH_SIZE * 2))
 fi
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$TYPE
-DIR=$BASE_DIR/$MODE/$MODEL/$LANGUAGE/$SEED
+DIR=$BASE_DIR/$MODE/$MODEL/$LANGUAGE
+[ "$MODE" == "test" ] && DIR="$DIR/$TRAIN_LANGUAGE"
+DIR=$DIR/$SEED
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
 [ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048
