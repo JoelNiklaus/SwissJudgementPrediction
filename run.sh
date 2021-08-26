@@ -17,8 +17,8 @@ while [ $# -gt 0 ]; do
   --mode=*)
     MODE="${1#*=}" # either 'train' or 'test'
     ;;
-  --special_splits=*)
-    SPECIAL_SPLITS="${1#*=}" # one of 'True' or 'False'
+  --sub_datasets=*)
+    SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
     ;;
   --seed=*)
     SEED="${1#*=}" # integer: is also used for naming the run and the output_dir!
@@ -41,7 +41,7 @@ printf "Argument TYPE is \t\t\t %s\n"            "$TYPE"
 printf "Argument LANGUAGE is \t\t\t %s\n"        "$LANGUAGE"
 printf "Argument TRAIN_LANGUAGE is \t\t %s\n"    "$TRAIN_LANGUAGE"
 printf "Argument MODE is \t\t\t %s\n"            "$MODE"
-printf "Argument SPECIAL_SPLITS is \t\t %s\n"    "$SPECIAL_SPLITS"
+printf "Argument SUB_DATASETS is \t\t %s\n"      "$SUB_DATASETS"
 printf "Argument SEED is \t\t\t %s\n"            "$SEED"
 printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
 
@@ -128,7 +128,7 @@ python run_tc.py
   --report_to $REPORT
   --overwrite_output_dir True
   --overwrite_cache False
-  --test_on_special_splits $SPECIAL_SPLITS
+  --test_on_sub_datasets $SUB_DATASETS
   $MAX_SAMPLES_ENABLED
 "
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function

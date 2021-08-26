@@ -187,7 +187,7 @@ def main():
         if training_args.do_predict:
             predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
 
-        if data_args.test_on_special_splits:
+        if data_args.test_on_sub_datasets:
             special_splits = dict()
             for file in glob.glob(f'data/{lang}/special_splits/*/*.csv'):
                 experiment = Path(file).parent.stem
@@ -446,7 +446,7 @@ def main():
             predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
         predict_dataset = preprocess_dataset(predict_dataset)
 
-    if data_args.test_on_special_splits:
+    if data_args.test_on_sub_datasets:
         for experiment, parts in special_splits.items():
             for part, dataset in parts.items():
                 special_splits[experiment][part] = preprocess_dataset(dataset)
@@ -720,8 +720,8 @@ def main():
 
         write_reports(training_args.output_dir, preds, labels, probs)
 
-    # Special Splits
-    if data_args.test_on_special_splits:
+    # Sub Datasets
+    if data_args.test_on_sub_datasets:
         logger.info("*** Special Splits ***")
         for experiment, parts in special_splits.items():
             for part, dataset in parts.items():

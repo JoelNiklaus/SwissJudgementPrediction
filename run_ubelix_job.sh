@@ -17,8 +17,8 @@
 
 # Put your code below this line
 
-# $1: model_name, $2: type, $3: language, $4: train_language, $5: mode, $6 special_splits
-bash run.sh --model_name=$1 --type=$2 --language=$3 --train_language=$4 --mode=$5 --special_splits=$6 \
+# $1: model_name, $2: type, $3: language, $4: train_language, $5: mode, $6 sub_datasets
+bash run.sh --model_name=$1 --type=$2 --language=$3 --train_language=$4 --mode=$5 --sub_datasets=$6 \
   --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
 
 # Example:   bash run.sh --model_name=bert-base-multilingual-cased --type=standard --language=it --train_language=it --mode=test --special_splits=False --seed=1 --debug=True

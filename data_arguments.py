@@ -32,10 +32,10 @@ class DataArguments:
                     "Padding to 'longest' may lead to problems in hierarchical and long bert."
         },
     )
-    test_on_special_splits: bool = field(
+    test_on_sub_datasets: bool = field(
         default=False,
         metadata={
-            "help": "Whether to test on the special splits or not."
+            "help": "Whether to test on the sub datasets or not."
         },
     )
     problem_type: str = field(
