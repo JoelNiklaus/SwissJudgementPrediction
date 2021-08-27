@@ -657,9 +657,9 @@ def main():
         if data_args.problem_type == 'single_label_classification':
             return label_dict["id2label"][pred]
 
-    def write_reports(base_dir, preds, labels, probs):
+    def write_reports(base_dir, preds, labels, probs, wandb_prefix):
         if trainer.is_world_process_zero():
-            true_confidences, false_confidences = [], []
+            correct_confidences, incorrect_confidences = [], []
             # write predictions to csv
             result = {"index": [], "prediction": [], "label": [], "is_correct": [], "confidence": [], "error": []}
             for index, pred in enumerate(preds):
@@ -667,9 +667,9 @@ def main():
                 is_correct = pred == labels[index]
                 error = 1 - confidence if is_correct else confidence
                 if is_correct:
-                    true_confidences.append(confidence)
+                    correct_confidences.append(confidence)
                 else:
-                    false_confidences.append(confidence)
+                    incorrect_confidences.append(confidence)
                 result['index'].append(index)
                 result['prediction'].append(pred2label(pred))
                 result['label'].append(pred2label(labels[index]))
@@ -679,9 +679,17 @@ def main():
             pd.DataFrame.from_dict(result).to_csv(f'{base_dir}/predictions.csv')
 
             # write confidences to csv
-            confidences = {"correct": {"mean": np.mean(true_confidences), "std": np.std(true_confidences)},
-                           "incorrect": {"mean": np.mean(false_confidences), "std": np.std(false_confidences)}}
+            confidences = {"correct": {"mean": np.mean(correct_confidences), "std": np.std(correct_confidences)},
+                           "incorrect": {"mean": np.mean(incorrect_confidences), "std": np.std(incorrect_confidences)}}
             pd.DataFrame.from_dict(confidences, orient='index').to_csv(f'{base_dir}/confidences.csv')
+
+            if "wandb" in training_args.report_to:
+                wandb.log({
+                    f"{wandb_prefix}correct_mean": confidences['correct']['mean'],
+                    f"{wandb_prefix}correct_std": confidences['correct']['std'],
+                    f"{wandb_prefix}incorrect_mean": confidences['incorrect']['mean'],
+                    f"{wandb_prefix}incorrect_std": confidences['incorrect']['std'],
+                })
 
             # write report file
             with open(f'{base_dir}/prediction_report.txt', "w") as writer:
@@ -700,8 +708,8 @@ def main():
                                                target_names=label_list, labels=list(label_dict['label2id'].values()))
                 write_report_section(writer, "Classification Report", str(report))
 
-                content = f"correct:\t{np.mean(true_confidences)}%\t+/-\t{np.std(true_confidences)}\n" \
-                          f"incorrect:\t{np.mean(false_confidences)}%\t+/-\t{np.std(false_confidences)}\n"
+                content = f"correct:\t{confidences['correct']['mean']}%\t+/-\t{confidences['correct']['std']}\n" \
+                          f"incorrect:\t{confidences['incorrect']['mean']}%\t+/-\t{confidences['incorrect']['std']}\n"
                 write_report_section(writer, "Mean confidence of predictions", content)
 
     # Prediction
@@ -719,11 +727,12 @@ def main():
 
         # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
         if "wandb" in training_args.report_to:
-            metrics = {k.replace("test_", "test/"): v for k, v in metrics.items()
+            prefix = "test/"
+            metrics = {k.replace("test_", prefix): v for k, v in metrics.items()
                        if "mem" not in k and k != "test_samples"}
             wandb.log(metrics)  # log test metrics to wandb
 
-        write_reports(training_args.output_dir, preds, labels, probs)
+        write_reports(training_args.output_dir, preds, labels, probs, prefix)
 
     # Sub Datasets
     if data_args.test_on_sub_datasets:
@@ -739,7 +748,7 @@ def main():
                         metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
                         metrics[f'{prefix}support'] = len(dataset)
                         wandb.log(metrics)  # log test metrics to wandb
-                    write_reports(base_dir, preds, labels, probs)
+                    write_reports(base_dir, preds, labels, probs, prefix)
 
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
