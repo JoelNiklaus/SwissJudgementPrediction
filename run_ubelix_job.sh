@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --time=24:00:00
-#SBATCH --mem=128G
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:rtx3090:1
 #SBATCH --qos=job_gpu_preempt

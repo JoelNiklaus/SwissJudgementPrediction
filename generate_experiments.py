@@ -1,6 +1,5 @@
 import pandas as pd
 
-# TODO Special splits only for long native german bert
 
 # TODO we had very good results with bigbird model: experiment with english bigbird model => Story of paper: pretrainig language does not matter that much
 # TODO experiment with randomly initialized transformer
@@ -8,11 +7,12 @@ import pandas as pd
 
 # TODO try using data augmentation: https://arxiv.org/abs/2105.03075
 
-model_names = {  # distilbert-base-multilingual-cased, google/rembert, google/mt5-base
+model_names = {  # distilbert-base-multilingual-cased, google/rembert (not yet in adapter-transformers), google/mt5-base (not yet in adapter-transformers),
     'de': ['xlm-roberta-base', 'deepset/gbert-base'],
     'fr': ['xlm-roberta-base', 'camembert/camembert-base-ccnet'],
     'it': ['xlm-roberta-base', 'Musixmatch/umberto-commoncrawl-cased-v1'],  # dbmdz/bert-base-italian-cased
-    'all': ['xlm-roberta-base', 'bert-base-multilingual-cased']
+    'all': ['xlm-roberta-base', 'bert-base-multilingual-cased'],
+    # 'en': ['google/bigbird-roberta-base', 'bert-base-cased', 'roberta-base'],
 }
 types = ['standard', 'hierarchical', 'long']  # longformer
 languages = ['de', 'fr', 'it', 'all']

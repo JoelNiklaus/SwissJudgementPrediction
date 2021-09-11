@@ -6,7 +6,7 @@ while [ $# -gt 0 ]; do
     MODEL_NAME="${1#*=}" # a model name from huggingface hub
     ;;
   --type=*)
-    TYPE="${1#*=}" # one of 'standard', 'long', 'longformer', 'hierarchical'
+    TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'longformer', 'bigbird'
     ;;
   --language=*)
     LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
@@ -77,7 +77,7 @@ elif [[ "$TYPE" == "long" ]]; then
   else
     BATCH_SIZE=2
   fi
-else # either 'hierarchical' or 'longformer'
+else # either 'hierarchical', 'longformer' or 'bigbird'
   BATCH_SIZE=4
 fi
 if [[ "$MODEL_NAME" =~ distilbert ]]; then
