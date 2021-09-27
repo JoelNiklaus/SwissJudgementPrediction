@@ -27,7 +27,7 @@ from sklearn.metrics import (
     multilabel_confusion_matrix,
     classification_report,
     confusion_matrix,
-    f1_score,
+    f1_score, balanced_accuracy_score,
 )
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.utils import compute_class_weight
@@ -481,6 +481,7 @@ def main():
         precision, recall, f1_weighted, _ = precision_recall_fscore_support(labels, preds, average='weighted')
         f1_micro = f1_score(labels, preds, average='micro')
         f1_macro = f1_score(labels, preds, average='macro')
+        balanced_accuracy = balanced_accuracy_score(labels, preds)
         return {
             'accuracy': accuracy,
             'precision': precision,
@@ -488,6 +489,7 @@ def main():
             'f1_weighted': f1_weighted,
             'f1_micro': f1_micro,
             'f1_macro': f1_macro,
+            'balanced_accuracy': balanced_accuracy
         }
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.

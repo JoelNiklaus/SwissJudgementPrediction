@@ -1,7 +1,6 @@
 import pandas as pd
 
 
-# TODO we had very good results with bigbird model: experiment with english bigbird model => Story of paper: pretrainig language does not matter that much
 # TODO experiment with randomly initialized transformer
 # TODO do we need to experiment with a BiLSTM model?
 
