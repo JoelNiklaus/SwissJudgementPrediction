@@ -1,8 +1,7 @@
 import pandas as pd
 
-
+# TODO implement baselines with BiLSTM, bow, tf-idf
 # TODO experiment with randomly initialized transformer
-# TODO do we need to experiment with a BiLSTM model?
 
 # TODO try using data augmentation: https://arxiv.org/abs/2105.03075
 

@@ -55,7 +55,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     default_data_collator,
-    set_seed,
+    set_seed, TrainerCallback,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
@@ -554,6 +554,26 @@ def main():
         label_datasets[majority_id] = label_datasets[majority_id].select(random_ids)
         train_dataset = concatenate_datasets(list(label_datasets.values()))
 
+    def save_model(model, folder):
+        # save entire model ourselves just to be safe
+        torch.save(model.state_dict(), f'{folder}/model.bin')
+        logger.info(f"Model state dict saved to {folder}/model.bin")
+
+        # save adapters
+        if model_args.use_adapters:
+            model.save_adapter(folder, data_args.task_name)
+
+    class CheckpointCallback(TrainerCallback):
+        def on_save(self, args, state, control, model=None, **kwargs):
+            if args.save_strategy == "epoch":
+                checkpoint_number = state.epoch
+            elif args.save_strategy == "steps":
+                checkpoint_number = state.global_step
+            else:
+                return
+            save_model(model, f"{args.output_dir}/checkpoint-{checkpoint_number}")
+
+
     # Initialize our Trainer
     trainer = trainer_init(
         model=model_init() if not data_args.tune_hyperparams else None,
@@ -564,7 +584,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=1), CheckpointCallback()],
     )
 
     # Hyperparameter Tuning
@@ -606,8 +626,7 @@ def main():
 
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
-        # save entire model ourselves just to be safe
-        torch.save(trainer.model.state_dict(), f'{training_args.output_dir}/model.bin')
+        save_model(trainer.model, training_args.output_dir)
 
         if model_args.long_input_bert_type == 'longformer':
             # Amend configuration file
@@ -762,6 +781,13 @@ def main():
             kwargs["dataset"] = f"SJP {data_args.task_name.upper()}"
 
         trainer.push_to_hub(**kwargs)
+
+        trainer.model.push_adapter_to_hub(
+            "my-awesome-adapter",
+            "awesome_adapter",
+            adapterhub_tag="text_classification/legal_judgment_prediction",
+            datasets_tag="swiss_judgment_prediction"
+        )
 
 
 if __name__ == "__main__":

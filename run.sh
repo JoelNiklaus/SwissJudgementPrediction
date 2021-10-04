@@ -20,6 +20,9 @@ while [ $# -gt 0 ]; do
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
     ;;
+  --adapters=*)
+    ADAPTERS="${1#*=}" # one of 'True' or 'False'
+    ;;
   --seed=*)
     SEED="${1#*=}" # integer: is also used for naming the run and the output_dir!
     ;;
@@ -42,6 +45,7 @@ printf "Argument LANGUAGE is \t\t\t %s\n"        "$LANGUAGE"
 printf "Argument TRAIN_LANGUAGE is \t\t %s\n"    "$TRAIN_LANGUAGE"
 printf "Argument MODE is \t\t\t %s\n"            "$MODE"
 printf "Argument SUB_DATASETS is \t\t %s\n"      "$SUB_DATASETS"
+printf "Argument ADAPTERS is \t\t %s\n"          "$ADAPTERS"
 printf "Argument SEED is \t\t\t %s\n"            "$SEED"
 printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
 
@@ -131,6 +135,8 @@ python run_tc.py
   --overwrite_output_dir True
   --overwrite_cache False
   --test_on_sub_datasets $SUB_DATASETS
+  --use_adapters $ADAPTERS
+  --train_adapter $TRAIN
   $MAX_SAMPLES_ENABLED
 "
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function
