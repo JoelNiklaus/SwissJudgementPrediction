@@ -729,8 +729,8 @@ def main():
         trainer.save_metrics("test", metrics)
 
         # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
+        prefix = "test/"
         if "wandb" in training_args.report_to:
-            prefix = "test/"
             metrics = {k.replace("test_", prefix): v for k, v in metrics.items()
                        if "mem" not in k and k != "test_samples"}
             wandb.log(metrics)  # log test metrics to wandb
@@ -746,8 +746,8 @@ def main():
                     base_dir = Path(training_args.output_dir) / experiment / part
                     base_dir.mkdir(parents=True, exist_ok=True)
                     preds, labels, probs, metrics = predict(dataset)
+                    prefix = f"{experiment}/{part}/"
                     if "wandb" in training_args.report_to:
-                        prefix = f"{experiment}/{part}/"
                         metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
                         metrics[f'{prefix}support'] = len(dataset)
                         wandb.log(metrics)  # log test metrics to wandb
