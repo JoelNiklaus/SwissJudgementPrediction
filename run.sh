@@ -5,8 +5,8 @@ while [ $# -gt 0 ]; do
   --model_name=*)
     MODEL_NAME="${1#*=}" # a model name from huggingface hub
     ;;
-  --type=*)
-    TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'longformer', 'bigbird'
+  --model_type=*)
+    MODEL_TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'longformer', 'bigbird'
     ;;
   --language=*)
     LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
@@ -14,14 +14,14 @@ while [ $# -gt 0 ]; do
   --train_language=*)
     TRAIN_LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
     ;;
-  --mode=*)
-    MODE="${1#*=}" # either 'train' or 'test'
+  --train_mode=*)
+    TRAIN_MODE="${1#*=}" # either 'train' or 'test'
+    ;;
+  --train_type=*)
+    TRAIN_TYPE="${1#*=}" # one of 'adapters' or 'finetune'
     ;;
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
-    ;;
-  --adapters=*)
-    ADAPTERS="${1#*=}" # one of 'True' or 'False'
     ;;
   --seed=*)
     SEED="${1#*=}" # integer: is also used for naming the run and the output_dir!
@@ -40,12 +40,12 @@ while [ $# -gt 0 ]; do
 done
 
 printf "Argument MODEL_NAME is \t\t\t %s\n"      "$MODEL_NAME"
-printf "Argument TYPE is \t\t\t %s\n"            "$TYPE"
+printf "Argument MODEL_TYPE is \t\t\t %s\n"      "$MODEL_TYPE"
 printf "Argument LANGUAGE is \t\t\t %s\n"        "$LANGUAGE"
 printf "Argument TRAIN_LANGUAGE is \t\t %s\n"    "$TRAIN_LANGUAGE"
-printf "Argument MODE is \t\t\t %s\n"            "$MODE"
+printf "Argument TRAIN_MODE is \t\t\t %s\n"      "$TRAIN_MODE"
+printf "Argument TRAIN_TYPE is \t\t\t %s\n"      "$TRAIN_TYPE"
 printf "Argument SUB_DATASETS is \t\t %s\n"      "$SUB_DATASETS"
-printf "Argument ADAPTERS is \t\t %s\n"          "$ADAPTERS"
 printf "Argument SEED is \t\t\t %s\n"            "$SEED"
 printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
 
@@ -73,9 +73,9 @@ LABEL_IMBALANCE_METHOD=oversampling
 # LongBERT (input size 1024) BERT-base: 4
 # LongBERT (input size 2048) XLM-RoBERTa-base: 1
 # LongBERT (input size 1024) XLM-RoBERTa-base: 2
-if [[ "$TYPE" == "standard" ]]; then
+if [[ "$MODEL_TYPE" == "standard" ]]; then
   BATCH_SIZE=16
-elif [[ "$TYPE" == "long" ]]; then
+elif [[ "$MODEL_TYPE" == "long" ]]; then
   if [[ "$MODEL_NAME" =~ roberta|camembert ]]; then
     BATCH_SIZE=1
   else
@@ -89,25 +89,26 @@ if [[ "$MODEL_NAME" =~ distilbert ]]; then
 fi
 
 # Compute variables based on settings above
-MODEL=$MODEL_NAME-$TYPE
-DIR=$BASE_DIR/$MODE/$MODEL/$LANGUAGE
-[ "$MODE" == "test" ] && DIR="$DIR/$TRAIN_LANGUAGE"
+MODEL=$MODEL_NAME-$MODEL_TYPE-$TRAIN_TYPE
+DIR=$BASE_DIR/$TRAIN_MODE/$MODEL/$LANGUAGE
+[ "$TRAIN_MODE" == "test" ] && DIR="$DIR/$TRAIN_LANGUAGE"
 DIR=$DIR/$SEED
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
-[ "$TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048
+[ "$MODEL_TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048
 # disable training if we are not in train mode
-[ "$MODE" == "train" ] && TRAIN="True" || TRAIN="False"
+[ "$TRAIN_MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
-[ "$MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
+[ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
+[ "$TRAIN_TYPE" == "adapters" ] && USE_ADAPTERS="True" || TRAIN="False"
 
 CMD="
 python run_tc.py
   --problem_type single_label_classification
   --model_name_or_path $MODEL_PATH
-  --run_name $MODE-$MODEL-$LANGUAGE-$TRAIN_LANGUAGE-$USE_PRETRAINED-$ADAPTERS-$SEED
+  --run_name $TRAIN_MODE-$MODEL-$LANGUAGE-$TRAIN_LANGUAGE-$SEED
   --output_dir $DIR
-  --long_input_bert_type $TYPE
+  --long_input_bert_type $MODEL_TYPE
   --learning_rate $LR
   --seed $SEED
   --evaluation_language $LANGUAGE
@@ -135,7 +136,7 @@ python run_tc.py
   --overwrite_output_dir True
   --overwrite_cache False
   --test_on_sub_datasets $SUB_DATASETS
-  --use_adapters $ADAPTERS
+  --use_adapters $USE_ADAPTERS
   --train_adapter $TRAIN
   $MAX_SAMPLES_ENABLED
 "

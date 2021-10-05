@@ -12,9 +12,9 @@ import math
 import os
 import random
 import sys
-from json import JSONEncoder
 
 import dataclasses
+import yaml
 from pathlib import Path
 from enum import Enum
 
@@ -67,9 +67,10 @@ from HierarchicalBert import HierarchicalBert
 from data_arguments import DataArguments, ProblemType
 from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType
 
-os.environ['TOKENIZERS_PARALLELISM'] = "True"
-os.environ['WANDB_PROJECT'] = 'SwissJudgmentPredictionAdapters'
+os.environ['WANDB_PROJECT'] = 'SwissJudgmentPrediction'
 os.environ['WANDB_MODE'] = "online"
+# os.environ['WANDB_NOTES'] = "Enter notes here"
+os.environ['TOKENIZERS_PARALLELISM'] = "True"
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # use this when debugging
 
 # Will error if the minimal version of transformers is not installed. Remove at your own risks.
@@ -117,24 +118,24 @@ def main():
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
 
+    def custom_asdict_factory(data):
+        def convert_value(obj):
+            if isinstance(obj, Enum):
+                return obj.value
+            return obj
+
+        return dict((k, convert_value(v)) for k, v in data)
+
     # Save all params for better reproducibility
     experiment_params = {
-        "model_args": dataclasses.asdict(model_args),
-        "data_args": dataclasses.asdict(data_args),
-        "training_args": dataclasses.asdict(training_args),
-        "adapter_args": dataclasses.asdict(adapter_args),
+        "model_args": dataclasses.asdict(model_args, dict_factory=custom_asdict_factory),
+        "data_args": dataclasses.asdict(data_args, dict_factory=custom_asdict_factory),
+        "training_args": dataclasses.asdict(training_args, dict_factory=custom_asdict_factory),
+        "adapter_args": dataclasses.asdict(adapter_args, dict_factory=custom_asdict_factory),
     }
-
-    class SimpleEncoder(JSONEncoder):
-        def default(self, o):
-            try:
-                return o.__dict__
-            except AttributeError:
-                return str(o)
-
     Path(training_args.output_dir).mkdir(parents=True, exist_ok=True)
-    with open(f'{training_args.output_dir}/experiment_params.json', 'w') as file:
-        json.dump(experiment_params, file, indent=4, cls=SimpleEncoder)
+    with open(f'{training_args.output_dir}/experiment_params.yaml', 'w') as file:
+        yaml.safe_dump(experiment_params, file, default_flow_style=False)
 
     # Setup distant debugging if needed
     if data_args.server_ip and data_args.server_port:
@@ -643,6 +644,8 @@ def main():
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
+
+    wandb.config.update(experiment_params)  # update config to save all the parameters
 
     def remove_metrics(metrics, split):
         # remove unnecessary values to make overview nicer in wandb
