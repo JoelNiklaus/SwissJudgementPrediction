@@ -1,6 +1,13 @@
+from transformers.file_utils import ExplicitEnum
 from typing import Optional
 
 from dataclasses import dataclass, field
+
+
+class ProblemType(str, ExplicitEnum):
+    REGRESSION = "regression"
+    SINGLE_LABEL_CLASSIFICATION = "single_label_classification"
+    MULTI_LABEL_CLASSIFICATION = "multi_label_classification"
 
 
 @dataclass
@@ -38,11 +45,10 @@ class DataArguments:
             "help": "Whether to test on the sub datasets or not."
         },
     )
-    problem_type: str = field(
+    problem_type: ProblemType = field(
         default="single_label_classification",
         metadata={
             "help": "Problem type for XxxForSequenceClassification models. "
-                    "Can be one of (\"regression\", \"single_label_classification\", \"multi_label_classification\")."
         },
     )
     task_name: Optional[str] = field(

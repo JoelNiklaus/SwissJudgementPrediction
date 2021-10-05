@@ -1,8 +1,21 @@
+from transformers.file_utils import ExplicitEnum
 from typing import Optional
 
 from dataclasses import dataclass, field
 
-long_input_bert_types = ['long', 'longformer', 'hierarchical']
+
+class LongInputBertType(str, ExplicitEnum):
+    STANDARD = "standard"
+    LONG = "long"
+    LONGFORMER = "longformer"
+    HIERARCHICAL = "hierarchical"
+    BIGBIRD = "bigbird"
+
+
+class LabelImbalanceMethod(str, ExplicitEnum):
+    CLASS_WEIGHTS = "class_weights"
+    OVERSAMPLING = "oversampling"
+    UNDERSAMPLING = "undersampling"
 
 
 @dataclass
@@ -13,26 +26,20 @@ class ModelArguments:
     model_name_or_path: str = field(
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"},
     )
-    long_input_bert_type: str = field(
-        default=None,
-        metadata={"help": f"Which bert type to use for handling long text inputs. "
-                          f"Currently the following types are supported: {long_input_bert_types}."},
+    long_input_bert_type: LongInputBertType = field(
+        default="standard", metadata={"help": f"Which bert type to use for handling long text inputs."},
     )
     use_adapters: bool = field(
-        default=False,
-        metadata={
-            "help": "If True uses adapters instead of finetuning the model."
-        },
+        default=False, metadata={"help": "If True uses adapters instead of finetuning the model."},
     )
     use_pretrained_model: bool = field(
-        default=True,
-        metadata={
-            "help": "If True uses a pretrained model."
-        },
+        default=True, metadata={"help": "If True uses a pretrained model."},
     )
     evaluation_language: str = field(
-        default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None. "
-                                        "Can also be set to 'all'"},
+        default=None, metadata={
+            "help": "Evaluation language. Also train language if `train_language` is set to None. "
+                    "Can also be set to 'all'"
+        },
     )
     train_language: Optional[str] = field(
         default=None, metadata={"help": "Train language if it is different from the evaluation language."},
@@ -51,15 +58,16 @@ class ModelArguments:
         default=False,
         metadata={"help": "arg to indicate if tokenizer should do lower case in AutoTokenizer.from_pretrained()"},
     )
-    label_imbalance_method: Optional[str] = field(
-        default=None,
-        metadata={"help": "Whether or not to use any method to combat label imbalance. "
-                          "Available are 'class_weights', 'oversampling' and 'undersampling'."
-                          "'class_weights' applies a special term to the loss function which gives more weight to the minority class. "
-                          "(Because this messes with the loss function, label smoothing does not work if this is enabled) "
-                          "'oversampling' oversamples the minority class to match the number of samples in the majority class. "
-                          "'undersampling' undersamples the majority class to match the number of samples in the minority class."
-                  },
+    label_imbalance_method: LabelImbalanceMethod = field(
+        default="oversampling",
+        metadata={
+            "help": "Whether or not to use any method to combat label imbalance. "
+                    "Available are 'class_weights', 'oversampling' and 'undersampling'."
+                    "'class_weights' applies a special term to the loss function which gives more weight to the minority class. "
+                    "(Because this messes with the loss function, label smoothing does not work if this is enabled) "
+                    "'oversampling' oversamples the minority class to match the number of samples in the majority class. "
+                    "'undersampling' undersamples the majority class to match the number of samples in the minority class."
+        },
     )
     prediction_threshold: int = field(
         default=0,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 """
-Finetuning multi-lingual models on SJP (e.g. Bert, DistilBERT, XLM).
+Finetuning/Adapting multi-lingual models on SJP (e.g. Bert, DistilBERT, XLM).
 Adapted from `examples/text-classification/run_glue.py`
 """
 import faulthandler
@@ -16,6 +16,7 @@ from json import JSONEncoder
 
 import dataclasses
 from pathlib import Path
+from enum import Enum
 
 import wandb
 import numpy as np
@@ -63,8 +64,8 @@ from transformers.utils import check_min_version
 import LongBert
 import Longformer
 from HierarchicalBert import HierarchicalBert
-from data_arguments import DataArguments
-from model_arguments import ModelArguments, long_input_bert_types
+from data_arguments import DataArguments, ProblemType
+from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
 os.environ['WANDB_PROJECT'] = 'SwissJudgmentPredictionAdapters'
@@ -215,7 +216,7 @@ def main():
         eval_dataset = concatenate_datasets(eval_datasets)
         predict_dataset = concatenate_datasets(predict_datasets)
 
-    if data_args.problem_type == 'multi_label_classification':
+    if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
         mlb = MultiLabelBinarizer().fit([label_list])
 
     # Load pretrained model and tokenizer
@@ -243,7 +244,7 @@ def main():
     )
 
     max_length = data_args.max_seq_length
-    if model_args.long_input_bert_type == 'hierarchical':
+    if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
         max_segment_length = 512  # because RoBERTa has 514 max_seq_length and not 512
         max_segments = math.ceil(max_length / max_segment_length)
         # we need to make space for adding the CLS and SEP token for each segment
@@ -345,11 +346,11 @@ def main():
                         "Use --train_adapter to enable adapter training"
                     )
 
-        if model_args.long_input_bert_type in long_input_bert_types:
-            if model_args.long_input_bert_type not in ['bigbird']: # nothing to do for bigbird
+        if model_args.long_input_bert_type == LongInputBertType.STANDARD:
+            if model_args.long_input_bert_type not in [LongInputBertType.BIGBIRD]:  # nothing to do for bigbird
                 encoder, classifier = get_encoder_and_classifier(model)
 
-                if model_args.long_input_bert_type == 'hierarchical':
+                if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
                     long_input_bert = HierarchicalBert(encoder,
                                                        max_segments=max_segments,
                                                        max_segment_length=max_segment_length,
@@ -358,12 +359,12 @@ def main():
                                                        device=training_args.device,
                                                        seg_encoder_type='lstm')
 
-                if model_args.long_input_bert_type == 'long':
+                if model_args.long_input_bert_type == LongInputBertType.LONG:
                     long_input_bert = LongBert.resize_position_embeddings(encoder,
                                                                           max_length=max_length,
                                                                           device=training_args.device)
 
-                if model_args.long_input_bert_type in ['hierarchical', 'long']:
+                if model_args.long_input_bert_type in [LongInputBertType.HIERARCHICAL, LongInputBertType.LONG]:
                     if config.model_type == 'distilbert':
                         model.distilbert = long_input_bert
 
@@ -372,7 +373,7 @@ def main():
 
                     if config.model_type in ['camembert', 'xlm-roberta']:
                         model.roberta = long_input_bert
-                        if model_args.long_input_bert_type == 'hierarchical':
+                        if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
                             dense = nn.Linear(config.hidden_size, config.hidden_size)
                             dense.load_state_dict(classifier.dense.state_dict())  # load weights
                             dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
@@ -387,7 +388,7 @@ def main():
                     model.load_state_dict(torch.load(model_path))
 
                 # NOTE: longformer had quite bad results (probably something is off here)
-                if training_args.do_train and model_args.long_input_bert_type == 'longformer':
+                if training_args.do_train and model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
                     encoder = Longformer.convert2longformer(encoder,
                                                             max_seq_length=max_length,
                                                             attention_window=128)
@@ -407,7 +408,7 @@ def main():
         padding = "longest"
 
     add_special_tokens = True
-    if model_args.long_input_bert_type == 'hierarchical':
+    if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
         add_special_tokens = False  # because we split it internally and then add the special tokens ourselves
 
     def preprocess_function(batch):
@@ -417,9 +418,9 @@ def main():
                               return_token_type_ids=True)
 
         # Map labels to IDs
-        if data_args.problem_type == 'multi_label_classification':
+        if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
             tokenized["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
-        if data_args.problem_type == 'single_label_classification':
+        if data_args.problem_type == ProblemType.SINGLE_LABEL_CLASSIFICATION:
             if label_dict["label2id"] is not None and "label" in batch:
                 tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
         return tokenized
@@ -464,10 +465,10 @@ def main():
     def process_results(preds, labels):
         preds = preds[0] if isinstance(preds, tuple) else preds
         probs = softmax(preds)
-        if data_args.problem_type == 'multi_label_classification':
+        if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
             # for multi_label_classification we need boolean arrays for each example
             preds, labels = preds_to_bools(preds), labels_to_bools(labels)
-        if data_args.problem_type == 'single_label_classification':
+        if data_args.problem_type == ProblemType.SINGLE_LABEL_CLASSIFICATION:
             preds = np.argmax(preds, axis=1)
         return preds, labels, probs
 
@@ -502,7 +503,7 @@ def main():
     else:
         data_collator = None
 
-    if training_args.do_train and model_args.label_imbalance_method == 'class_weights':
+    if training_args.do_train and model_args.label_imbalance_method == LabelImbalanceMethod.CLASS_WEIGHTS:
         lbls = [item['label'] for item in train_dataset]
         # compute class weights based on label distribution
         class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
@@ -525,7 +526,8 @@ def main():
         trainer_init = Trainer
 
     # NOTE: This is not optimized for multiclass classification
-    if training_args.do_train and model_args.label_imbalance_method in ['oversampling', 'undersampling']:
+    if training_args.do_train and model_args.label_imbalance_method in [LabelImbalanceMethod.OVERSAMPLING,
+                                                                        LabelImbalanceMethod.UNDERSAMPLING]:
         label_datasets = dict()
         minority_len, majority_len = len(train_dataset), 0
         for label_id in label_dict['id2label'].keys():
@@ -537,7 +539,7 @@ def main():
                 majority_len = len(label_datasets[label_id])
                 majority_id = label_id
 
-    if training_args.do_train and model_args.label_imbalance_method == 'oversampling':
+    if training_args.do_train and model_args.label_imbalance_method == LabelImbalanceMethod.OVERSAMPLING:
         logger.info("Oversampling the minority class")
         datasets = [train_dataset]
         num_full_minority_sets = int(majority_len / minority_len)
@@ -549,7 +551,7 @@ def main():
         datasets.append(label_datasets[minority_id].select(random_ids))
         train_dataset = concatenate_datasets(datasets)
 
-    if training_args.do_train and model_args.label_imbalance_method == 'undersampling':
+    if training_args.do_train and model_args.label_imbalance_method == LabelImbalanceMethod.UNDERSAMPLING:
         logger.info("Undersampling the majority class")
         random_ids = np.random.choice(majority_len, minority_len, replace=False)
         # just select only the number of minority samples from the majority class
@@ -574,7 +576,6 @@ def main():
             else:
                 return
             save_model(model, f"{args.output_dir}/checkpoint-{checkpoint_number}")
-
 
     # Initialize our Trainer
     trainer = trainer_init(
@@ -630,7 +631,7 @@ def main():
 
         save_model(trainer.model, training_args.output_dir)
 
-        if model_args.long_input_bert_type == 'longformer':
+        if model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
             # Amend configuration file
             config_path = f'{training_args.output_dir}/config.json'
             with open(config_path) as config_file:
@@ -676,9 +677,9 @@ def main():
         writer.write("\n" * 3)
 
     def pred2label(pred):
-        if data_args.problem_type == 'multi_label_classification':
+        if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
             return mlb.inverse_transform(np.array([pred]))[0]
-        if data_args.problem_type == 'single_label_classification':
+        if data_args.problem_type == ProblemType.SINGLE_LABEL_CLASSIFICATION:
             return label_dict["id2label"][pred]
 
     def write_reports(base_dir, preds, labels, probs, wandb_prefix):
@@ -717,10 +718,10 @@ def main():
 
             # write report file
             with open(f'{base_dir}/prediction_report.txt', "w") as writer:
-                if data_args.problem_type == 'multi_label_classification':
+                if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
                     title = "Multilabel Confusion Matrix"
                     matrices = multilabel_confusion_matrix(labels, preds)
-                if data_args.problem_type == 'single_label_classification':
+                if data_args.problem_type == ProblemType.SINGLE_LABEL_CLASSIFICATION:
                     title = "Singlelabel Confusion Matrix"
                     matrices = [confusion_matrix(labels, preds)]
                 content = "reading help:\nTN FP\nFN TP\n\n"
