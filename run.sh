@@ -89,8 +89,8 @@ if [[ "$MODEL_NAME" =~ distilbert ]]; then
 fi
 
 # Compute variables based on settings above
-MODEL=$MODEL_NAME-$MODEL_TYPE-$TRAIN_TYPE
-DIR=$BASE_DIR/$TRAIN_MODE/$MODEL/$LANGUAGE
+MODEL=$MODEL_NAME-$MODEL_TYPE
+DIR=$BASE_DIR/$TRAIN_TYPE/$TRAIN_MODE/$MODEL/$LANGUAGE
 [ "$TRAIN_MODE" == "test" ] && DIR="$DIR/$TRAIN_LANGUAGE"
 DIR=$DIR/$SEED
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size

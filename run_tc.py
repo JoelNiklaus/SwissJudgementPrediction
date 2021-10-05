@@ -67,7 +67,6 @@ from HierarchicalBert import HierarchicalBert
 from data_arguments import DataArguments, ProblemType
 from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType
 
-os.environ['WANDB_PROJECT'] = 'SwissJudgmentPrediction'
 os.environ['WANDB_MODE'] = "online"
 # os.environ['WANDB_NOTES'] = "Enter notes here"
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
@@ -102,6 +101,7 @@ def main():
 
     # for better charts when we have a group run with multiple seeds
     os.environ["WANDB_RUN_GROUP"] = training_args.run_name[:-2]  # remove last two characters "-{seed}"
+    os.environ['WANDB_PROJECT'] = f'SwissJudgmentPrediction{"Adapters" if model_args.use_adapters else "Finetune"}'
 
     # Detecting last checkpoint.
     last_checkpoint = None
