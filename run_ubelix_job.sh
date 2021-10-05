@@ -17,11 +17,11 @@
 
 # Put your code below this line
 
-# $1: model_name, $2: type, $3: language, $4: train_language, $5: mode, $6 sub_datasets, $7 adapters
-bash run.sh --model_name=$1 --type=$2 --language=$3 --train_language=$4 --mode=$5 --sub_datasets=$6 --adapters=$7 \
+#           $1: model_name, $2: type, $3: language, $4: train_language, $5: mode, $6: sub_datasets, $7: use_pretrained, $8: adapters
+bash run.sh --model_name=$1 --type=$2 --language=$3 --train_language=$4 --mode=$5 --sub_datasets=$6 --use_pretrained=$7 --adapters=$8 \
   --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
 
-# Example:   bash run.sh --model_name=bert-base-multilingual-cased --type=standard --language=it --train_language=it --mode=test --sub_datasets=False --adapters=True --seed=1 --debug=True
+# Example:   bash run.sh --model_name=bert-base-multilingual-cased --type=standard --language=it --train_language=it --mode=test --sub_datasets=False --use_pretrained=True --adapters=True --seed=1 --debug=True
 
 # IMPORTANT:
 # Run with                  sbatch run_ubelix_job.sl

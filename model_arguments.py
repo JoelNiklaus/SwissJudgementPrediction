@@ -24,6 +24,12 @@ class ModelArguments:
             "help": "If True uses adapters instead of finetuning the model."
         },
     )
+    use_pretrained_model: bool = field(
+        default=True,
+        metadata={
+            "help": "If True uses a pretrained model."
+        },
+    )
     evaluation_language: str = field(
         default=None, metadata={"help": "Evaluation language. Also train language if `train_language` is set to None. "
                                         "Can also be set to 'all'"},

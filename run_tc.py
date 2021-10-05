@@ -67,7 +67,7 @@ from data_arguments import DataArguments
 from model_arguments import ModelArguments, long_input_bert_types
 
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
-os.environ['WANDB_PROJECT'] = 'SwissJudgementPrediction'
+os.environ['WANDB_PROJECT'] = 'SwissJudgmentPredictionAdapters'
 os.environ['WANDB_MODE'] = "online"
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # use this when debugging
 
@@ -266,15 +266,17 @@ def main():
         return encoder, classifier
 
     def model_init():
-        model = AutoModelForSequenceClassification.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-        # model = BertForSequenceClassification() # for untrained model
+        if model_args.use_pretrained_model:
+            model = AutoModelForSequenceClassification.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
+        else:
+            model = AutoModelForSequenceClassification.from_config(config)
 
         # TODO use more flexible AutoModelWithHeads for better adapter support
         # model = AutoModelWithHeads.from_pretrained(

@@ -20,6 +20,9 @@ while [ $# -gt 0 ]; do
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
     ;;
+  --use_pretrained=*)
+    USE_PRETRAINED="${1#*=}" # one of 'True' or 'False'
+    ;;
   --adapters=*)
     ADAPTERS="${1#*=}" # one of 'True' or 'False'
     ;;
@@ -45,6 +48,7 @@ printf "Argument LANGUAGE is \t\t\t %s\n"        "$LANGUAGE"
 printf "Argument TRAIN_LANGUAGE is \t\t %s\n"    "$TRAIN_LANGUAGE"
 printf "Argument MODE is \t\t\t %s\n"            "$MODE"
 printf "Argument SUB_DATASETS is \t\t %s\n"      "$SUB_DATASETS"
+printf "Argument USE_PRETRAINED is \t\t %s\n"    "$USE_PRETRAINED"
 printf "Argument ADAPTERS is \t\t %s\n"          "$ADAPTERS"
 printf "Argument SEED is \t\t\t %s\n"            "$SEED"
 printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
@@ -105,7 +109,7 @@ CMD="
 python run_tc.py
   --problem_type single_label_classification
   --model_name_or_path $MODEL_PATH
-  --run_name $MODE-$MODEL-$LANGUAGE-$TRAIN_LANGUAGE-$SEED
+  --run_name $MODE-$MODEL-$LANGUAGE-$TRAIN_LANGUAGE-$USE_PRETRAINED-$ADAPTERS-$SEED
   --output_dir $DIR
   --long_input_bert_type $TYPE
   --learning_rate $LR
@@ -135,6 +139,7 @@ python run_tc.py
   --overwrite_output_dir True
   --overwrite_cache False
   --test_on_sub_datasets $SUB_DATASETS
+  --use_pretrained_model $USE_PRETRAINED
   --use_adapters $ADAPTERS
   --train_adapter $TRAIN
   $MAX_SAMPLES_ENABLED
