@@ -2,7 +2,7 @@ import torch
 
 
 def resize_position_embeddings(encoder, max_length, device):
-    supported_models = ['distilbert', 'bert', 'camembert', 'xlm-roberta']
+    supported_models = ['distilbert', 'bert', 'camembert', 'xlm-roberta', 'roberta']
     assert encoder.config.model_type in supported_models  # other models are not supported so far
 
     old_max_length = encoder.config.max_position_embeddings

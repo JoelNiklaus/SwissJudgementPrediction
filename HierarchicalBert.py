@@ -22,7 +22,7 @@ class HierarchicalBert(nn.Module):
     def __init__(self, encoder, max_segments, max_segment_length, cls_token_id, sep_token_id, device,
                  seg_encoder_type="lstm"):
         super(HierarchicalBert, self).__init__()
-        supported_models = ['bert', 'camembert', 'xlm-roberta']
+        supported_models = ['bert', 'camembert', 'xlm-roberta', 'roberta']
         assert encoder.config.model_type in supported_models  # other models are not supported so far
         self.encoder = encoder
         self.hidden_size = encoder.config.hidden_size
