@@ -6,7 +6,7 @@ while [ $# -gt 0 ]; do
     MODEL_NAME="${1#*=}" # a model name from huggingface hub
     ;;
   --model_type=*)
-    MODEL_TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'longformer', 'bigbird'
+    MODEL_TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'longformer', 'efficient'
     ;;
   --language=*)
     LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
@@ -75,13 +75,15 @@ LABEL_IMBALANCE_METHOD=oversampling
 # LongBERT (input size 1024) XLM-RoBERTa-base: 2
 if [[ "$MODEL_TYPE" == "standard" ]]; then
   BATCH_SIZE=16
+elif [[ "$MODEL_TYPE" == "efficient" ]]; then
+  BATCH_SIZE=8
 elif [[ "$MODEL_TYPE" == "long" ]]; then
   if [[ "$MODEL_NAME" =~ roberta|camembert ]]; then
     BATCH_SIZE=1
   else
     BATCH_SIZE=2
   fi
-else # either 'hierarchical', 'longformer' or 'bigbird'
+else # either 'hierarchical' or 'longformer'
   BATCH_SIZE=4
 fi
 if [[ "$MODEL_NAME" =~ distilbert ]]; then

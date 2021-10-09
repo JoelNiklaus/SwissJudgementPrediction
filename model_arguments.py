@@ -9,7 +9,7 @@ class LongInputBertType(str, ExplicitEnum):
     LONG = "long"
     LONGFORMER = "longformer"
     HIERARCHICAL = "hierarchical"
-    BIGBIRD = "bigbird"
+    EFFICIENT = "efficient"  # bigbird, performer, etc.
 
 
 class LabelImbalanceMethod(str, ExplicitEnum):

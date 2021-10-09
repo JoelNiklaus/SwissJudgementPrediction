@@ -300,7 +300,7 @@ def main():
 
 
         if model_args.long_input_bert_type != LongInputBertType.STANDARD:
-            if model_args.long_input_bert_type not in [LongInputBertType.BIGBIRD]:  # nothing to do for bigbird
+            if model_args.long_input_bert_type not in [LongInputBertType.EFFICIENT]:  # nothing to do for efficient ones
                 encoder, classifier = get_encoder_and_classifier(model)
 
                 if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
