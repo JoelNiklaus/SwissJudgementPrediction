@@ -133,6 +133,8 @@ def main():
         "training_args": dataclasses.asdict(training_args, dict_factory=custom_asdict_factory),
         "adapter_args": dataclasses.asdict(adapter_args, dict_factory=custom_asdict_factory),
     }
+    logger.info(experiment_params)
+
     Path(training_args.output_dir).mkdir(parents=True, exist_ok=True)
     with open(f'{training_args.output_dir}/experiment_params.yaml', 'w') as file:
         yaml.safe_dump(experiment_params, file, default_flow_style=False)
