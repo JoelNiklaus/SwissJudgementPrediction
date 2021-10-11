@@ -133,8 +133,6 @@ def main():
         "training_args": dataclasses.asdict(training_args, dict_factory=custom_asdict_factory),
         "adapter_args": dataclasses.asdict(adapter_args, dict_factory=custom_asdict_factory),
     }
-    logger.info(experiment_params)
-
     Path(training_args.output_dir).mkdir(parents=True, exist_ok=True)
     with open(f'{training_args.output_dir}/experiment_params.yaml', 'w') as file:
         yaml.safe_dump(experiment_params, file, default_flow_style=False)
@@ -167,6 +165,8 @@ def main():
         transformers.utils.logging.set_verbosity_info()
         transformers.utils.logging.enable_default_handler()
         transformers.utils.logging.enable_explicit_format()
+
+    logger.info(experiment_params)
     logger.info(f"Training/evaluation parameters {training_args}")
 
     # Set seed before initializing model.
@@ -193,13 +193,13 @@ def main():
             predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
 
         if data_args.test_on_sub_datasets:
-            special_splits = dict()
-            for file in glob.glob(f'data/{lang}/special_splits/*/*.csv'):
+            sub_datasets = dict()
+            for file in glob.glob(f'data/{lang}/sub_datasets/*/*.csv'):
                 experiment = Path(file).parent.stem
                 part = Path(file).stem.split("-")[1]
-                if experiment not in special_splits:
-                    special_splits[experiment] = dict()
-                special_splits[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
+                if experiment not in sub_datasets:
+                    sub_datasets[experiment] = dict()
+                sub_datasets[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
 
         # Labels: they will get overwritten if there are multiple languages
         with open(f'data/{lang}/labels.json', 'r') as f:
@@ -460,9 +460,9 @@ def main():
         predict_dataset = preprocess_dataset(predict_dataset)
 
     if data_args.test_on_sub_datasets:
-        for experiment, parts in special_splits.items():
+        for experiment, parts in sub_datasets.items():
             for part, dataset in parts.items():
-                special_splits[experiment][part] = preprocess_dataset(dataset)
+                sub_datasets[experiment][part] = preprocess_dataset(dataset)
 
     def labels_to_bools(labels):
         return [tl == 1 for tl in labels]
@@ -547,24 +547,24 @@ def main():
                 majority_len = len(label_datasets[label_id])
                 majority_id = label_id
 
-    if training_args.do_train and model_args.label_imbalance_method == LabelImbalanceMethod.OVERSAMPLING:
-        logger.info("Oversampling the minority class")
-        datasets = [train_dataset]
-        num_full_minority_sets = int(majority_len / minority_len)
-        for i in range(num_full_minority_sets - 1):  # -1 because one is already included in the trainig dataset
-            datasets.append(label_datasets[minority_id])
+        if model_args.label_imbalance_method == LabelImbalanceMethod.OVERSAMPLING:
+            logger.info("Oversampling the minority class")
+            datasets = [train_dataset]
+            num_full_minority_sets = int(majority_len / minority_len)
+            for i in range(num_full_minority_sets - 1):  # -1 because one is already included in the trainig dataset
+                datasets.append(label_datasets[minority_id])
 
-        remaining_minority_samples = majority_len % minority_len
-        random_ids = np.random.choice(minority_len, remaining_minority_samples, replace=False)
-        datasets.append(label_datasets[minority_id].select(random_ids))
-        train_dataset = concatenate_datasets(datasets)
+            remaining_minority_samples = majority_len % minority_len
+            random_ids = np.random.choice(minority_len, remaining_minority_samples, replace=False)
+            datasets.append(label_datasets[minority_id].select(random_ids))
+            train_dataset = concatenate_datasets(datasets)
 
-    if training_args.do_train and model_args.label_imbalance_method == LabelImbalanceMethod.UNDERSAMPLING:
-        logger.info("Undersampling the majority class")
-        random_ids = np.random.choice(majority_len, minority_len, replace=False)
-        # just select only the number of minority samples from the majority class
-        label_datasets[majority_id] = label_datasets[majority_id].select(random_ids)
-        train_dataset = concatenate_datasets(list(label_datasets.values()))
+        if model_args.label_imbalance_method == LabelImbalanceMethod.UNDERSAMPLING:
+            logger.info("Undersampling the majority class")
+            random_ids = np.random.choice(majority_len, minority_len, replace=False)
+            # just select only the number of minority samples from the majority class
+            label_datasets[majority_id] = label_datasets[majority_id].select(random_ids)
+            train_dataset = concatenate_datasets(list(label_datasets.values()))
 
     def save_model(model, folder):
         # save entire model ourselves just to be safe
@@ -773,7 +773,7 @@ def main():
     # Sub Datasets
     if data_args.test_on_sub_datasets:
         logger.info("*** Special Splits ***")
-        for experiment, parts in special_splits.items():
+        for experiment, parts in sub_datasets.items():
             for part, dataset in parts.items():
                 if len(dataset) >= 1:  # we need at least one example
                     base_dir = Path(training_args.output_dir) / experiment / part
