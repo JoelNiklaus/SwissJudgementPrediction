@@ -55,7 +55,6 @@ MAX_SAMPLES=100
 [ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"                     # disable wandb reporting in debug mode
 [ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp"                  # set other dir when debugging so we don't overwrite results
 [ "$DEBUG" == "True" ] && FP16="False" || FP16="True"                       # disable fp16 in debug mode because it might run on cpu
-[ "$DEBUG" == "True" ] && OVERWRITE_CACHE="True" || OVERWRITE_CACHE="False" # this can prevent nasty errors
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
@@ -135,7 +134,7 @@ python run_tc.py
   --save_total_limit 3
   --report_to $REPORT
   --overwrite_output_dir True
-  --overwrite_cache $OVERWRITE_CACHE
+  --overwrite_cache True
   --test_on_sub_datasets $SUB_DATASETS
   --use_adapters $USE_ADAPTERS
   --train_adapter $TRAIN
