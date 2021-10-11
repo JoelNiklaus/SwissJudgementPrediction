@@ -52,15 +52,16 @@ printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
 MAX_SAMPLES=100
 # enable max samples in debug mode to make it run faster
 [ "$DEBUG" == "True" ] && MAX_SAMPLES_ENABLED="--max_train_samples $MAX_SAMPLES --max_eval_samples $MAX_SAMPLES --max_predict_samples $MAX_SAMPLES"
-[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"      # disable fp16 in debug mode because it might run on cpu
-[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"    # disable wandb reporting in debug mode
-[ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp" # set other dir when debugging so we don't overwrite results
+[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"                     # disable wandb reporting in debug mode
+[ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp"                  # set other dir when debugging so we don't overwrite results
+[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"                       # disable fp16 in debug mode because it might run on cpu
+[ "$DEBUG" == "True" ] && OVERWRITE_CACHE="True" || OVERWRITE_CACHE="False" # this can prevent nasty errors
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
-TOTAL_BATCH_SIZE=64 # we made the best experiences with this (32 and below sometimes did not train well)
-LR=3e-5             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
-NUM_EPOCHS=5
-LABEL_IMBALANCE_METHOD=oversampling
+TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
+LR=3e-5                             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
+NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway
+LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
 
 # Batch size for RTX 3090 for
 # Distilbert: 32
@@ -75,15 +76,13 @@ LABEL_IMBALANCE_METHOD=oversampling
 # LongBERT (input size 1024) XLM-RoBERTa-base: 2
 if [[ "$MODEL_TYPE" == "standard" ]]; then
   BATCH_SIZE=16
-elif [[ "$MODEL_TYPE" == "efficient" ]]; then
-  BATCH_SIZE=8
 elif [[ "$MODEL_TYPE" == "long" ]]; then
   if [[ "$MODEL_NAME" =~ roberta|camembert ]]; then
     BATCH_SIZE=1
   else
     BATCH_SIZE=2
   fi
-else # either 'hierarchical' or 'longformer'
+else # either 'hierarchical', 'efficient' or 'longformer'
   BATCH_SIZE=4
 fi
 if [[ "$MODEL_NAME" =~ distilbert ]]; then
@@ -136,7 +135,7 @@ python run_tc.py
   --save_total_limit 3
   --report_to $REPORT
   --overwrite_output_dir True
-  --overwrite_cache False
+  --overwrite_cache $OVERWRITE_CACHE
   --test_on_sub_datasets $SUB_DATASETS
   --use_adapters $USE_ADAPTERS
   --train_adapter $TRAIN

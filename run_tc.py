@@ -79,7 +79,7 @@ logger = logging.getLogger(__name__)
 
 faulthandler.enable()
 
-model_types = ['distilbert', 'bert', 'roberta', 'camembert']
+model_types = ['distilbert', 'bert', 'roberta', 'camembert', 'big_bird']
 languages = ['de', 'fr', 'it']
 
 logger.warning("This script only supports PyTorch models!")
@@ -223,8 +223,6 @@ def main():
         mlb = MultiLabelBinarizer().fit([label_list])
 
     # Load pretrained model and tokenizer
-    # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
-    # download model & vocab.
     finetuning_task = "text-classification"
     config = AutoConfig.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
@@ -260,7 +258,7 @@ def main():
 
         if config.model_type == 'distilbert':
             encoder = model.distilbert
-        if config.model_type == 'bert':
+        if config.model_type in ['bert', 'big_bird']:
             encoder = model.bert
         if config.model_type in ['camembert', 'xlm-roberta', 'roberta']:
             encoder = model.roberta
@@ -297,58 +295,56 @@ def main():
         #    id2label=label_dict['id2label'],
         # )
 
+        if model_args.long_input_bert_type not in [LongInputBertType.STANDARD, LongInputBertType.EFFICIENT]:
+            logger.info('Configuring non-standard BERT variants')
+            encoder, classifier = get_encoder_and_classifier(model)
 
+            if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
+                long_input_bert = HierarchicalBert(encoder,
+                                                   max_segments=max_segments,
+                                                   max_segment_length=max_segment_length,
+                                                   cls_token_id=tokenizer.cls_token_id,
+                                                   sep_token_id=tokenizer.sep_token_id,
+                                                   device=training_args.device,
+                                                   seg_encoder_type='lstm')
 
-        if model_args.long_input_bert_type != LongInputBertType.STANDARD:
-            if model_args.long_input_bert_type not in [LongInputBertType.EFFICIENT]:  # nothing to do for efficient ones
-                encoder, classifier = get_encoder_and_classifier(model)
+            if model_args.long_input_bert_type == LongInputBertType.LONG:
+                long_input_bert = LongBert.resize_position_embeddings(encoder,
+                                                                      max_length=max_length,
+                                                                      device=training_args.device)
 
-                if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-                    long_input_bert = HierarchicalBert(encoder,
-                                                       max_segments=max_segments,
-                                                       max_segment_length=max_segment_length,
-                                                       cls_token_id=tokenizer.cls_token_id,
-                                                       sep_token_id=tokenizer.sep_token_id,
-                                                       device=training_args.device,
-                                                       seg_encoder_type='lstm')
+            if model_args.long_input_bert_type in [LongInputBertType.HIERARCHICAL, LongInputBertType.LONG]:
+                if config.model_type == 'distilbert':
+                    model.distilbert = long_input_bert
 
-                if model_args.long_input_bert_type == LongInputBertType.LONG:
-                    long_input_bert = LongBert.resize_position_embeddings(encoder,
-                                                                          max_length=max_length,
-                                                                          device=training_args.device)
+                if config.model_type in ['bert', 'big_bird']:
+                    model.bert = long_input_bert
 
-                if model_args.long_input_bert_type in [LongInputBertType.HIERARCHICAL, LongInputBertType.LONG]:
-                    if config.model_type == 'distilbert':
-                        model.distilbert = long_input_bert
+                if config.model_type in ['camembert', 'xlm-roberta', 'roberta']:
+                    model.roberta = long_input_bert
+                    if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
+                        dense = nn.Linear(config.hidden_size, config.hidden_size)
+                        dense.load_state_dict(classifier.dense.state_dict())  # load weights
+                        dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
+                        out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
+                        out_proj.load_state_dict(classifier.out_proj.state_dict())  # load weights
+                        model.classifier = nn.Sequential(dense, dropout, out_proj).to(training_args.device)
 
-                    if config.model_type == 'bert':
-                        model.bert = long_input_bert
+            if last_checkpoint or not training_args.do_train:
+                # Make sure we really load all the weights after we modified the models
+                model_path = f'{model_args.model_name_or_path}/model.bin'
+                if Path(model_path).exists():
+                    logger.info(f"loading file {model_path}")
+                    model.load_state_dict(torch.load(model_path))
 
-                    if config.model_type in ['camembert', 'xlm-roberta', 'roberta']:
-                        model.roberta = long_input_bert
-                        if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-                            dense = nn.Linear(config.hidden_size, config.hidden_size)
-                            dense.load_state_dict(classifier.dense.state_dict())  # load weights
-                            dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
-                            out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
-                            out_proj.load_state_dict(classifier.out_proj.state_dict())  # load weights
-                            model.classifier = nn.Sequential(dense, dropout, out_proj).to(training_args.device)
-
-                if last_checkpoint or not training_args.do_train:
-                    # Make sure we really load all the weights after we modified the models
-                    model_path = f'{model_args.model_name_or_path}/model.bin'
-                    if Path(model_path).exists():
-                        logger.info(f"loading file {model_path}")
-                        model.load_state_dict(torch.load(model_path))
-
-                # NOTE: longformer had quite bad results (probably something is off here)
-                if training_args.do_train and model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
-                    encoder = Longformer.convert2longformer(encoder,
-                                                            max_seq_length=max_length,
-                                                            attention_window=128)
-                    model = LongformerForSequenceClassification(config)
-                    model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
-                    model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
+            # NOTE: longformer had quite bad results (probably something is off here)
+            if training_args.do_train and model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
+                encoder = Longformer.convert2longformer(encoder,
+                                                        max_seq_length=max_length,
+                                                        attention_window=128)
+                model = LongformerForSequenceClassification(config)
+                model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
+                model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
 
         if model_args.use_adapters:
             # Setup adapters
@@ -402,7 +398,7 @@ def main():
                         "Use --train_adapter to enable adapter training"
                     )
 
-        print(model)
+        logger.info(model)
 
         return model
 
@@ -447,6 +443,7 @@ def main():
         train_dataset = preprocess_dataset(train_dataset)
         # Log a random sample from the training set:
         for index in random.sample(range(len(train_dataset)), 1):
+            assert len(train_dataset[index]['input_ids']) == data_args.max_seq_length
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     if training_args.do_eval:
@@ -653,7 +650,7 @@ def main():
         trainer.save_state()
 
     # TODO fix this again!
-    #wandb.config.update(experiment_params)  # update config to save all the parameters
+    # wandb.config.update(experiment_params)  # update config to save all the parameters
 
     def remove_metrics(metrics, split):
         # remove unnecessary values to make overview nicer in wandb
