@@ -443,8 +443,8 @@ def main():
         train_dataset = preprocess_dataset(train_dataset)
         # Log a random sample from the training set:
         for index in random.sample(range(len(train_dataset)), 1):
-            assert len(train_dataset[index]['input_ids']) == data_args.max_seq_length
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
+            assert len(train_dataset[index]['input_ids']) == max_length  # the tokenizer shouldn't do anything stupid
 
     if training_args.do_eval:
         if data_args.max_eval_samples is not None:
