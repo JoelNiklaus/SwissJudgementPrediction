@@ -14,6 +14,7 @@ import random
 import sys
 
 import dataclasses
+import shutil
 import yaml
 from pathlib import Path
 from enum import Enum
@@ -799,6 +800,11 @@ def main():
             adapterhub_tag="text_classification/legal_judgment_prediction",
             datasets_tag="swiss_judgment_prediction"
         )
+
+    # Clean up checkpoints
+    checkpoints = [filepath for filepath in glob.glob(f'{training_args.output_dir}/*/') if '/checkpoint' in filepath]
+    for checkpoint in checkpoints:
+        shutil.rmtree(checkpoint)
 
 
 if __name__ == "__main__":
