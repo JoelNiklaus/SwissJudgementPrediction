@@ -306,7 +306,7 @@ def main():
                                                    cls_token_id=tokenizer.cls_token_id,
                                                    sep_token_id=tokenizer.sep_token_id,
                                                    device=training_args.device,
-                                                   seg_encoder_type='lstm')
+                                                   seg_encoder_type='transformer')
 
             if model_args.long_input_bert_type == LongInputBertType.LONG:
                 long_input_bert = LongBert.resize_position_embeddings(encoder,
