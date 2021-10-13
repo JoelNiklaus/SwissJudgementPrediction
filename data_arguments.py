@@ -10,6 +10,13 @@ class ProblemType(str, ExplicitEnum):
     MULTI_LABEL_CLASSIFICATION = "multi_label_classification"
 
 
+class SegmentationType(str, ExplicitEnum):
+    SENTENCE = "sentence"
+    PARAGRAPH = "paragraph"
+    BLOCK = "block"
+    OVERLAPPING = "overlapping"
+
+
 @dataclass
 class DataArguments:
     """
@@ -21,11 +28,37 @@ class DataArguments:
     tune_hyperparams: bool = field(
         default=False, metadata={"help": "Whether or not to tune the hyperparameters before training."},
     )
-    max_seq_length: Optional[int] = field(
-        default=512,
+    max_seq_len: Optional[int] = field(
+        default=2048,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
                     "than this will be truncated, sequences shorter will be padded."
+        },
+    )
+    max_segments: Optional[int] = field(
+        default=8,
+        metadata={
+            "help": "The maximum number of segments (paragraphs/sentences) to be considered. Sequences longer "
+                    "than this will be truncated, sequences shorter will be padded."
+        },
+    )
+    max_seg_len: Optional[int] = field(
+        default=128,
+        metadata={
+            "help": "The maximum segment (paragraph/sentences) length to be considered. Sequences longer "
+                    "than this will be truncated, sequences shorter will be padded."
+        },
+    )
+    min_seg_len: Optional[int] = field(
+        default=64,
+        metadata={
+            "help": "If a segment is smaller than this many characters, it will be concatenated with the next segment."
+        },
+    )
+    segmentation_type: SegmentationType = field(
+        default=SegmentationType.BLOCK,
+        metadata={
+            "help": "How to split the text into segments when using hierarchical BERT."
         },
     )
     overwrite_cache: bool = field(
@@ -34,7 +67,7 @@ class DataArguments:
     pad_to_max_length: bool = field(
         default=True,  # TODO change to false again if everything works
         metadata={
-            "help": "Whether to pad all samples to `max_seq_length`. "
+            "help": "Whether to pad all samples to `max_seq_len`. "
                     "If False, will pad the samples dynamically when batching to the maximum length in the batch. "
                     "Padding to 'longest' may lead to problems in hierarchical and long bert."
         },

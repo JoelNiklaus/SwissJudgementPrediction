@@ -10,6 +10,7 @@ import json
 import logging
 import math
 import os
+import pprint
 import random
 import sys
 
@@ -65,7 +66,7 @@ from transformers.utils import check_min_version
 import LongBert
 import Longformer
 from HierarchicalBert import HierarchicalBert
-from data_arguments import DataArguments, ProblemType
+from data_arguments import DataArguments, ProblemType, SegmentationType
 from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType
 
 os.environ['WANDB_MODE'] = "online"
@@ -82,6 +83,25 @@ faulthandler.enable()
 
 model_types = ['distilbert', 'bert', 'roberta', 'camembert', 'big_bird']
 languages = ['de', 'fr', 'it']
+
+
+def get_sentencizer(lang):
+    if lang == 'de':
+        from spacy.lang.de import German
+        nlp = German()
+    elif lang == 'fr':
+        from spacy.lang.fr import French
+        nlp = French()
+    elif lang == 'it':
+        from spacy.lang.it import Italian
+        nlp = Italian()
+    else:
+        raise ValueError(f"Please choose one of the following languages: {languages}")
+    nlp.add_pipe("sentencizer")
+    return nlp
+
+
+sentencicers = {lang: get_sentencizer(lang) for lang in languages}
 
 logger.warning("This script only supports PyTorch models!")
 
@@ -157,7 +177,7 @@ def main():
 
     # Log on each process the small summary:
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
     )
 
@@ -167,8 +187,8 @@ def main():
         transformers.utils.logging.enable_default_handler()
         transformers.utils.logging.enable_explicit_format()
 
-    logger.info(experiment_params)
-    logger.info(f"Training/evaluation parameters {training_args}")
+    logger.info(f"Experiment parameters:")
+    pprint.pprint(experiment_params)
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
@@ -245,13 +265,6 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    max_length = data_args.max_seq_length
-    if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-        max_segment_length = 512  # because RoBERTa has 514 max_seq_length and not 512
-        max_segments = math.ceil(max_length / max_segment_length)
-        # we need to make space for adding the CLS and SEP token for each segment
-        max_length -= max_segments * 2
-
     def get_encoder_and_classifier(model):
         if config.model_type not in model_types:
             raise ValueError(f"{config.model_type} is not supported. "
@@ -301,17 +314,12 @@ def main():
             encoder, classifier = get_encoder_and_classifier(model)
 
             if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-                long_input_bert = HierarchicalBert(encoder,
-                                                   max_segments=max_segments,
-                                                   max_segment_length=max_segment_length,
-                                                   cls_token_id=tokenizer.cls_token_id,
-                                                   sep_token_id=tokenizer.sep_token_id,
-                                                   device=training_args.device,
+                long_input_bert = HierarchicalBert(encoder, max_segments=data_args.max_segments,
+                                                   max_segment_length=data_args.max_seg_len,
                                                    seg_encoder_type='transformer')
 
             if model_args.long_input_bert_type == LongInputBertType.LONG:
-                long_input_bert = LongBert.resize_position_embeddings(encoder,
-                                                                      max_length=max_length,
+                long_input_bert = LongBert.resize_position_embeddings(encoder, max_length=data_args.max_seq_len,
                                                                       device=training_args.device)
 
             if model_args.long_input_bert_type in [LongInputBertType.HIERARCHICAL, LongInputBertType.LONG]:
@@ -341,7 +349,7 @@ def main():
             # NOTE: longformer had quite bad results (probably something is off here)
             if training_args.do_train and model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
                 encoder = Longformer.convert2longformer(encoder,
-                                                        max_seq_length=max_length,
+                                                        max_seq_length=data_args.max_seq_len,
                                                         attention_window=128)
                 model = LongformerForSequenceClassification(config)
                 model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
@@ -412,30 +420,73 @@ def main():
         # IMPORTANT: Can lead to problem with HierarchicalBert
         padding = "longest"
 
-    add_special_tokens = True
-    if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-        add_special_tokens = False  # because we split it internally and then add the special tokens ourselves
-
     def preprocess_function(batch):
-        # Tokenize the texts
-        tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
-                              max_length=max_length, add_special_tokens=add_special_tokens,
-                              return_token_type_ids=True)
+        if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
+            batch['segments'] = []
+            if data_args.segmentation_type == SegmentationType.BLOCK:
+                tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
+                                      max_length=data_args.max_segments * data_args.max_seg_len)
+                for ids in tokenized['input_ids']:
+                    # convert ids to tokens and then back to strings
+                    id_blocks = [ids[i:i + data_args.max_seg_len] for i in range(0, len(ids), data_args.max_seg_len)]
+                    token_blocks = [tokenizer.convert_ids_to_tokens(ids) for ids in id_blocks]
+                    string_blocks = [tokenizer.convert_tokens_to_string(tokens) for tokens in token_blocks]
+                    batch['segments'].append(string_blocks)
+            elif data_args.segmentation_type == SegmentationType.SENTENCE:
+                # TODO get paragraph information here because sentence splitting is difficult with legal text:
+                #  https://aclanthology.org/W19-2204.pdf, https://www.scitepress.org/Papers/2021/102463/102463.pdf
+                # For the moment just do it so we can test the new bert variant
+                sents_list = []
+                if model_args.evaluation_language != 'all':
+                    nlp = sentencicers[model_args.evaluation_language]
+                    for doc in nlp.pipe(batch['text'], batch_size=len(batch['text'])):
+                        sents_list.append([sent.text for sent in doc.sents])
+                else:  # if the languages are mixed we need to load it from the case
+                    for case in batch['text']:
+                        nlp = sentencicers[case['language']]
+                        sents_list.append([sent.text for sent in nlp(case).sents])
+                for sents in sents_list:
+                    sentences = []
+                    for sent in sents:
+                        if len(sent) <= data_args.min_seg_len and len(sentences):
+                            sentences[-1] += ' ' + sent
+                        else:
+                            sentences.append(sent)
+                    batch['segments'].append(sentences)
+
+            # Tokenize the texts
+            batch['input_ids'], batch['attention_mask'], batch['token_type_ids'] = [], [], []
+            for case in batch['segments']:
+                case_encodings = tokenizer(case[:data_args.max_segments], padding=padding, truncation=True,
+                                           max_length=data_args.max_seg_len, return_token_type_ids=True)
+                batch['input_ids'].append(append_zero_segments(case_encodings['input_ids']))
+                batch['attention_mask'].append(append_zero_segments(case_encodings['attention_mask']))
+                batch['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids']))
+
+            del batch['segments']
+        else:
+            # Tokenize the texts
+            batch = tokenizer(batch["text"], padding=padding, truncation=True,
+                              max_length=data_args.max_seq_len, return_token_type_ids=True)
 
         # Map labels to IDs
         if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
-            tokenized["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
+            batch["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
         if data_args.problem_type == ProblemType.SINGLE_LABEL_CLASSIFICATION:
             if label_dict["label2id"] is not None and "label" in batch:
-                tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
-        return tokenized
+                batch["label"] = [label_dict["label2id"][l] for l in batch["label"]]
+        return batch
+
+    def append_zero_segments(case_encodings):
+        """appends a list of zero segments to the encodings to make up for missing segments"""
+        return case_encodings + [[0] * data_args.max_seg_len] * (data_args.max_segments - len(case_encodings))
 
     def preprocess_dataset(dataset):
         return dataset.map(
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
-            remove_columns=dataset.column_names,
+            remove_columns=[col for col in dataset.column_names if col != 'label'],
         )
 
     if training_args.do_train:
@@ -445,7 +496,11 @@ def main():
         # Log a random sample from the training set:
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-            assert len(train_dataset[index]['input_ids']) == max_length  # the tokenizer shouldn't do anything stupid
+            # make sure the tokenizer didn't do anything stupid
+            if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
+                assert len(train_dataset[index]['input_ids'][0]) == data_args.max_seg_len
+            else:
+                assert len(train_dataset[index]['input_ids']) == data_args.max_seq_len
 
     if training_args.do_eval:
         if data_args.max_eval_samples is not None:

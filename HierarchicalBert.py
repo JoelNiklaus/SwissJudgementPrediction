@@ -7,7 +7,6 @@ from torch import nn
 from transformers.file_utils import ModelOutput
 
 
-# TODO why not use transformers.modeling_outputs.SequenceClassifierOutput here?
 @dataclass
 class SimpleOutput(ModelOutput):
     last_hidden_state: torch.FloatTensor = None
@@ -27,11 +26,11 @@ def sinusoidal_init(num_embeddings: int, embedding_dim: int):
     position_enc[1:, 1::2] = np.cos(position_enc[1:, 1::2])  # dim 2i+1
     return torch.from_numpy(position_enc).type(torch.FloatTensor)
 
+
 # TODO subclass BertModel, BertConfig and BertTokenizer to make it more clean and to override save_pretrained() so that the seg_encoder is saved too
 class HierarchicalBert(nn.Module):
 
-    def __init__(self, encoder, max_segments, max_segment_length, cls_token_id, sep_token_id, device,
-                 seg_encoder_type="transformer"):
+    def __init__(self, encoder, max_segments, max_segment_length, seg_encoder_type="transformer"):
         super(HierarchicalBert, self).__init__()
         supported_models = ['bert', 'camembert', 'xlm-roberta', 'roberta']
         assert encoder.config.model_type in supported_models  # other models are not supported so far
@@ -43,13 +42,10 @@ class HierarchicalBert(nn.Module):
         self.hidden_size = encoder.config.hidden_size
         self.max_segments = max_segments
         self.max_segment_length = max_segment_length
-        self.sep_token_id = sep_token_id
-        self.cls_token_id = cls_token_id
-        self.device = device
-
         self.seg_encoder_type = seg_encoder_type
 
         if self.seg_encoder_type == "lstm":
+            # Init segment-wise BiLSTM-based encoder
             self.seg_encoder = nn.LSTM(encoder.config.hidden_size, encoder.config.hidden_size,
                                        bidirectional=True, num_layers=1, batch_first=True)
             self.down_project = nn.Linear(in_features=2 * self.hidden_size, out_features=self.hidden_size)
@@ -81,27 +77,7 @@ class HierarchicalBert(nn.Module):
                 return_dict=None,
                 adapter_names=None,
                 ):
-        # Hypothetical example (samples, max_document_size) --> (16, 5110) and max_segments == 10
-        # Reshape samples into segments # (samples, segments, max_segment_length) --> (16, 10, 510)
-        input_ids = torch.reshape(input_ids, (input_ids.size(0), self.max_segments, self.max_segment_length - 2))
-        attention_mask = torch.reshape(attention_mask,
-                                       (attention_mask.size(0), self.max_segments, self.max_segment_length - 2))
-        token_type_ids = torch.reshape(token_type_ids,
-                                       (token_type_ids.size(0), self.max_segments, self.max_segment_length - 2))
-
-        # Put back [CLS] and [SEP] tokens per segment (16, 10, 510) --> (16, 10, 512)
-        cls_input_ids = torch.ones((input_ids.size(0), self.max_segments, 1), dtype=torch.int,
-                                   device=self.device) * self.cls_token_id
-        sep_input_ids = torch.ones((input_ids.size(0), self.max_segments, 1), dtype=torch.int,
-                                   device=self.device) * self.sep_token_id
-        extra_attention_masks = torch.ones((attention_mask.size(0), self.max_segments, 1), dtype=torch.int,
-                                           device=self.device)
-        extra_token_type_ids = torch.zeros((token_type_ids.size(0), self.max_segments, 1), dtype=torch.int,
-                                           device=self.device)
-        input_ids = torch.cat([cls_input_ids, input_ids, sep_input_ids], 2)
-        attention_mask = torch.cat([extra_attention_masks, attention_mask, extra_attention_masks], 2)
-        token_type_ids = torch.cat([extra_token_type_ids, token_type_ids, extra_token_type_ids], 2)
-
+        # Input (samples, segments, max_segment_length) --> (16, 10, 510)
         # Squash samples and segments into a single axis (samples * segments, max_segment_length) --> (160, 512)
         input_ids_reshape = input_ids.contiguous().view(-1, input_ids.size(-1))
         attention_mask_reshape = attention_mask.contiguous().view(-1, attention_mask.size(-1))
@@ -114,8 +90,7 @@ class HierarchicalBert(nn.Module):
 
         # Reshape back to (samples, segments, max_segment_length, output_size) --> (16, 10, 512, 768)
         encoder_outputs = encoder_outputs.contiguous().view(input_ids.size(0), self.max_segments,
-                                                            self.max_segment_length,
-                                                            self.hidden_size)
+                                                            self.max_segment_length, self.hidden_size)
 
         # Gather CLS per segment --> (16, 10, 768)
         encoder_outputs = encoder_outputs[:, :, 0]
@@ -135,7 +110,7 @@ class HierarchicalBert(nn.Module):
 
         if self.seg_encoder_type == 'transformer':
             # Transformer on top of segment encodings --> (16, 10, 768)
-            # Infer real segments, i.e., mask paddings
+            # Infer real segments, i.e., mask paddings (like attention_mask but on a segment level)
             seg_mask = (torch.sum(input_ids, 2) != 0).to(input_ids.dtype)
             # Infer and collect segment positional embeddings
             seg_positions = torch.arange(1, self.max_segments + 1).to(input_ids.device) * seg_mask

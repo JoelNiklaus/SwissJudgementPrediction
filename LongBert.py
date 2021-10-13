@@ -6,7 +6,7 @@ def resize_position_embeddings(encoder, max_length, device):
     assert encoder.config.model_type in supported_models  # other models are not supported so far
 
     old_max_length = encoder.config.max_position_embeddings
-    old_max_length = 512  # because RoBERTa has 514 max_seq_length and not 512
+    old_max_length = 512  # because RoBERTa has 514 max_seq_len and not 512
     assert max_length % old_max_length == 0
 
     # Create new embedding layer

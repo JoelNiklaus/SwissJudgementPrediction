@@ -52,15 +52,16 @@ printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
 MAX_SAMPLES=100
 # enable max samples in debug mode to make it run faster
 [ "$DEBUG" == "True" ] && MAX_SAMPLES_ENABLED="--max_train_samples $MAX_SAMPLES --max_eval_samples $MAX_SAMPLES --max_predict_samples $MAX_SAMPLES"
-[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"                     # disable wandb reporting in debug mode
-[ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp"                  # set other dir when debugging so we don't overwrite results
-[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"                       # disable fp16 in debug mode because it might run on cpu
+[ "$DEBUG" == "True" ] && REPORT="none" || REPORT="all"    # disable wandb reporting in debug mode
+[ "$DEBUG" == "True" ] && BASE_DIR="tmp" || BASE_DIR="sjp" # set other dir when debugging so we don't overwrite results
+[ "$DEBUG" == "True" ] && FP16="False" || FP16="True"      # disable fp16 in debug mode because it might run on cpu
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
 LR=3e-5                             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
 NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway
 LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
+SEG_TYPE=sentence                   # one of sentence, paragraph, block, overlapping
 
 # Batch size for RTX 3090 for
 # Distilbert: 32
@@ -95,15 +96,16 @@ DIR=$BASE_DIR/$TRAIN_TYPE/$TRAIN_MODE/$MODEL/$LANGUAGE
 DIR=$DIR/$SEED
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
-[ "$MODEL_TYPE" == "standard" ] && MAX_SEQ_LENGTH=512 || MAX_SEQ_LENGTH=2048
+[ "$MODEL_TYPE" == "standard" ] && MAX_SEQ_LEN=512 || MAX_SEQ_LEN=2048
+[ "$SEG_TYPE" == "block" ] && MAX_SEG_LEN=512 || MAX_SEG_LEN=128
+[ "$SEG_TYPE" == "sentence" ] && MAX_SEGMENTS=16 || MAX_SEGMENTS=4
 # disable training if we are not in train mode
 [ "$TRAIN_MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
 [ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$TRAIN_TYPE/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
 [ "$TRAIN_TYPE" == "adapters" ] && USE_ADAPTERS="True" || USE_ADAPTERS="False"
 
-CMD="
-python run_tc.py
+CMD="python run_tc.py
   --problem_type single_label_classification
   --model_name_or_path $MODEL_PATH
   --run_name $TRAIN_MODE-$MODEL-$LANGUAGE-$TRAIN_LANGUAGE-$SEED
@@ -127,7 +129,10 @@ python run_tc.py
   --eval_accumulation_steps $ACCUMULATION_STEPS
   --per_device_train_batch_size $BATCH_SIZE
   --per_device_eval_batch_size $BATCH_SIZE
-  --max_seq_length $MAX_SEQ_LENGTH
+  --segmentation_type $SEG_TYPE
+  --max_seq_len $MAX_SEQ_LEN
+  --max_segments $MAX_SEGMENTS
+  --max_seg_len $MAX_SEG_LEN
   --num_train_epochs $NUM_EPOCHS
   --load_best_model_at_end
   --metric_for_best_model eval_loss
@@ -144,9 +149,9 @@ python run_tc.py
 #  --resume_from_checkpoint $DIR/checkpoint-$CHECKPOINT
 #  --metric_for_best_model eval_f1_macro # would be slightly better for imbalanced datasets
 
-echo "Running command
-$CMD
-This output can be used to quickly run the command in the IDE for debugging"
+echo "
+Running the following command (this can be used to quickly run the command in the IDE for debugging):
+$CMD"
 
 # Actually execute the command
 eval $CMD
