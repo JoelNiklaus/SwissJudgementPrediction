@@ -455,27 +455,25 @@ def main():
                     batch['segments'].append(sentences)
 
             # Tokenize the texts
-            batch['input_ids'], batch['attention_mask'], batch['token_type_ids'] = [], [], []
+            tokenized = {'input_ids': [], 'attention_mask': [], 'token_type_ids': []}
             for case in batch['segments']:
                 case_encodings = tokenizer(case[:data_args.max_segments], padding=padding, truncation=True,
                                            max_length=data_args.max_seg_len, return_token_type_ids=True)
-                batch['input_ids'].append(append_zero_segments(case_encodings['input_ids']))
-                batch['attention_mask'].append(append_zero_segments(case_encodings['attention_mask']))
-                batch['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids']))
-
-            del batch['segments']
+                tokenized['input_ids'].append(append_zero_segments(case_encodings['input_ids']))
+                tokenized['attention_mask'].append(append_zero_segments(case_encodings['attention_mask']))
+                tokenized['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids']))
         else:
             # Tokenize the texts
-            batch = tokenizer(batch["text"], padding=padding, truncation=True,
-                              max_length=data_args.max_seq_len, return_token_type_ids=True)
+            tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
+                                  max_length=data_args.max_seq_len, return_token_type_ids=True)
 
         # Map labels to IDs
         if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
-            batch["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
+            tokenized["label"] = [mlb.transform([eval(labels)])[0] for labels in batch["label"]]
         if data_args.problem_type == ProblemType.SINGLE_LABEL_CLASSIFICATION:
             if label_dict["label2id"] is not None and "label" in batch:
-                batch["label"] = [label_dict["label2id"][l] for l in batch["label"]]
-        return batch
+                tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
+        return tokenized
 
     def append_zero_segments(case_encodings):
         """appends a list of zero segments to the encodings to make up for missing segments"""
@@ -486,7 +484,7 @@ def main():
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
-            remove_columns=[col for col in dataset.column_names if col != 'label'],
+            remove_columns=dataset.column_names,
         )
 
     if training_args.do_train:
