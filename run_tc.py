@@ -8,7 +8,6 @@ import faulthandler
 import glob
 import json
 import logging
-import math
 import os
 import pprint
 import random
@@ -46,6 +45,7 @@ import transformers
 import transformers.adapters.composition as ac
 from transformers import (
     AdapterConfig,
+    AdapterTrainer,
     AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -562,13 +562,15 @@ def main():
     else:
         data_collator = None
 
+    trainer_class = AdapterTrainer if adapter_args.train_adapter else Trainer
+    trainer_class = Trainer
     if training_args.do_train and model_args.label_imbalance_method == LabelImbalanceMethod.CLASS_WEIGHTS:
         lbls = [item['label'] for item in train_dataset]
         # compute class weights based on label distribution
         class_weight = compute_class_weight('balanced', classes=np.unique(lbls), y=lbls)
         class_weight = torch.tensor(class_weight, dtype=torch.float32, device=training_args.device)  # create tensor
 
-        class CustomTrainer(Trainer):
+        class CustomTrainer(trainer_class):
             # adapt loss function to combat label imbalance
             def compute_loss(self, model, inputs, return_outputs=False):
                 labels = inputs.pop("labels")
@@ -580,9 +582,7 @@ def main():
                     # loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
                 return (loss, outputs) if return_outputs else loss
 
-        trainer_init = CustomTrainer
-    else:
-        trainer_init = Trainer
+        trainer_class = CustomTrainer
 
     # NOTE: This is not optimized for multiclass classification
     if training_args.do_train and model_args.label_imbalance_method in [LabelImbalanceMethod.OVERSAMPLING,
@@ -637,7 +637,7 @@ def main():
             save_model(model, f"{args.output_dir}/checkpoint-{checkpoint_number}")
 
     # Initialize our Trainer
-    trainer = trainer_init(
+    trainer = trainer_class(
         model=model_init() if not data_args.tune_hyperparams else None,
         model_init=model_init if data_args.tune_hyperparams else None,
         args=training_args,
