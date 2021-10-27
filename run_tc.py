@@ -53,7 +53,6 @@ from transformers import (
     EvalPrediction,
     EarlyStoppingCallback,
     HfArgumentParser,
-    LongformerForSequenceClassification,
     MultiLingAdapterArguments,
     Trainer,
     TrainingArguments,
@@ -64,8 +63,6 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
 import LongBert
-import Longformer
-from HierarchicalBert import HierarchicalBert
 from data_arguments import DataArguments, ProblemType, SegmentationType
 from hier_bert.configuration_hier_bert import HierBertConfig
 from hier_bert.modeling_hier_bert import HierBertForSequenceClassification
@@ -349,7 +346,7 @@ def main():
                 long_input_bert = LongBert.resize_position_embeddings(encoder, max_length=data_args.max_seq_len,
                                                                       device=training_args.device)
 
-            if model_args.long_input_bert_type in [LongInputBertType.LONG]:
+            if model_args.long_input_bert_type == LongInputBertType.LONG:
                 if config.model_type == 'distilbert':
                     model.distilbert = long_input_bert
 
@@ -372,16 +369,6 @@ def main():
                 if Path(model_path).exists():
                     logger.info(f"loading file {model_path}")
                     model.load_state_dict(torch.load(model_path))
-
-            # TODO delete this
-            # NOTE: longformer had quite bad results (probably something is off here)
-            if training_args.do_train and model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
-                encoder = Longformer.convert2longformer(encoder,
-                                                        max_seq_length=data_args.max_seq_len,
-                                                        attention_window=128)
-                model = LongformerForSequenceClassification(config)
-                model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
-                model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
 
         if model_args.train_type == TrainType.ADAPTERS:
             # Setup adapters
@@ -726,15 +713,6 @@ def main():
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
         save_model(trainer.model, training_args.output_dir)
-
-        if model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
-            # Amend configuration file
-            config_path = f'{training_args.output_dir}/config.json'
-            with open(config_path) as config_file:
-                configuration = json.load(config_file)
-                configuration['model_type'] = "longformer"
-            with open(config_path, 'w') as config_file:
-                json.dump(configuration, config_file, indent=4)
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
