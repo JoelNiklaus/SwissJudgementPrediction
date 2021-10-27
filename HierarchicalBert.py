@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from transformers import BertModel, RobertaModel
 from typing import Optional, Tuple
 import numpy as np
 
@@ -27,11 +28,11 @@ def sinusoidal_init(num_embeddings: int, embedding_dim: int):
     return torch.from_numpy(position_enc).type(torch.FloatTensor)
 
 
-# TODO subclass BertModel, BertConfig and BertTokenizer to make it more clean and to override save_pretrained() so that the seg_encoder is saved too
-class HierarchicalBert(nn.Module):
+# TODO subclass BertModel, BertConfig and BertTokenizer to make it more clean and to override save_pretrained() so that the segment_encoder is saved too
+class HierarchicalBert(BertModel, RobertaModel):
 
     def __init__(self, encoder, max_segments, max_segment_length, seg_encoder_type="transformer"):
-        super(HierarchicalBert, self).__init__()
+        super(HierarchicalBert, self).__init__(encoder.config)
         supported_models = ['bert', 'camembert', 'xlm-roberta', 'roberta']
         assert encoder.config.model_type in supported_models  # other models are not supported so far
 

@@ -67,6 +67,14 @@ import LongBert
 import Longformer
 from HierarchicalBert import HierarchicalBert
 from data_arguments import DataArguments, ProblemType, SegmentationType
+from hier_bert.configuration_hier_bert import HierBertConfig
+from hier_bert.modeling_hier_bert import HierBertForSequenceClassification
+from hier_camembert.configuration_hier_camembert import HierCamembertConfig
+from hier_camembert.modeling_hier_camembert import HierCamembertForSequenceClassification
+from hier_roberta.configuration_hier_roberta import HierRobertaConfig
+from hier_roberta.modeling_hier_roberta import HierRobertaForSequenceClassification
+from hier_xlm_roberta.configuration_hier_xlm_roberta import HierXLMRobertaConfig
+from hier_xlm_roberta.modeling_hier_xlm_roberta import HierXLMRobertaForSequenceClassification
 from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType
 
 os.environ['WANDB_MODE'] = "online"
@@ -84,6 +92,8 @@ faulthandler.enable()
 model_types = ['distilbert', 'bert', 'roberta', 'camembert', 'big_bird']
 languages = ['de', 'fr', 'it']
 
+
+# TODO refactor code into separate folder
 
 def get_sentencizer(lang):
     if lang == 'de':
@@ -269,7 +279,10 @@ def main():
         if config.model_type not in model_types:
             raise ValueError(f"{config.model_type} is not supported. "
                              f"Please use one of the supported model types {model_types}")
-
+        # if model_args.use_adapters:  # in adapter-transformers we should be able access the encoder like this directly
+        #    encoder = model.encoder
+        # else:
+        # TODO try to get it with model.base_model
         if config.model_type == 'distilbert':
             encoder = model.distilbert
         if config.model_type in ['bert', 'big_bird']:
@@ -314,15 +327,29 @@ def main():
             encoder, classifier = get_encoder_and_classifier(model)
 
             if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-                long_input_bert = HierarchicalBert(encoder, max_segments=data_args.max_segments,
-                                                   max_segment_length=data_args.max_seg_len,
-                                                   seg_encoder_type='transformer')
+                if config.model_type == 'bert':
+                    config_class = HierBertConfig
+                    model_class = HierBertForSequenceClassification
+                if config.model_type == 'roberta':
+                    config_class = HierRobertaConfig
+                    model_class = HierRobertaForSequenceClassification
+                if config.model_type == 'xlm-roberta':
+                    config_class = HierXLMRobertaConfig
+                    model_class = HierXLMRobertaForSequenceClassification
+                if config.model_type == 'camembert':
+                    config_class = HierCamembertConfig
+                    model_class = HierCamembertForSequenceClassification
+
+                hier_bert_config = config_class(max_segments=data_args.max_segments,
+                                                max_segment_length=data_args.max_seg_len,
+                                                segment_encoder_type="transformer", **config.to_dict())
+                model = model_class.from_pretrained(model_args.model_name_or_path, config=hier_bert_config)
 
             if model_args.long_input_bert_type == LongInputBertType.LONG:
                 long_input_bert = LongBert.resize_position_embeddings(encoder, max_length=data_args.max_seq_len,
                                                                       device=training_args.device)
 
-            if model_args.long_input_bert_type in [LongInputBertType.HIERARCHICAL, LongInputBertType.LONG]:
+            if model_args.long_input_bert_type in [LongInputBertType.LONG]:
                 if config.model_type == 'distilbert':
                     model.distilbert = long_input_bert
 
@@ -346,6 +373,7 @@ def main():
                     logger.info(f"loading file {model_path}")
                     model.load_state_dict(torch.load(model_path))
 
+            # TODO delete this
             # NOTE: longformer had quite bad results (probably something is off here)
             if training_args.do_train and model_args.long_input_bert_type == LongInputBertType.LONGFORMER:
                 encoder = Longformer.convert2longformer(encoder,
@@ -462,6 +490,7 @@ def main():
                 tokenized['input_ids'].append(append_zero_segments(case_encodings['input_ids']))
                 tokenized['attention_mask'].append(append_zero_segments(case_encodings['attention_mask']))
                 tokenized['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids']))
+            del batch['segments']
         else:
             # Tokenize the texts
             tokenized = tokenizer(batch["text"], padding=padding, truncation=True,

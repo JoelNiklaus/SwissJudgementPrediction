@@ -61,7 +61,8 @@ TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32
 LR=3e-5                             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
 NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway
 LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
-SEG_TYPE=sentence                   # one of sentence, paragraph, block, overlapping
+SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
+OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
 
 # Batch size for RTX 3090 for
 # Distilbert: 32
@@ -139,7 +140,7 @@ CMD="python run_tc.py
   --save_total_limit 3
   --report_to $REPORT
   --overwrite_output_dir True
-  --overwrite_cache True
+  --overwrite_cache $OVERWRITE_CACHE
   --test_on_sub_datasets $SUB_DATASETS
   --use_adapters $USE_ADAPTERS
   --train_adapter $TRAIN
