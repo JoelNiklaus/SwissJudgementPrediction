@@ -75,7 +75,7 @@ from hier_roberta.configuration_hier_roberta import HierRobertaConfig
 from hier_roberta.modeling_hier_roberta import HierRobertaForSequenceClassification
 from hier_xlm_roberta.configuration_hier_xlm_roberta import HierXLMRobertaConfig
 from hier_xlm_roberta.modeling_hier_xlm_roberta import HierXLMRobertaForSequenceClassification
-from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType
+from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType, TrainType
 
 os.environ['WANDB_MODE'] = "online"
 # os.environ['WANDB_NOTES'] = "Enter notes here"
@@ -132,7 +132,7 @@ def main():
 
     # for better charts when we have a group run with multiple seeds
     os.environ["WANDB_RUN_GROUP"] = training_args.run_name[:-2]  # remove last two characters "-{seed}"
-    os.environ['WANDB_PROJECT'] = f'SwissJudgmentPrediction{"Adapters" if model_args.use_adapters else "Finetune"}'
+    os.environ['WANDB_PROJECT'] = f'SwissJudgmentPredictionCrossLingualTransfer'
 
     # Detecting last checkpoint.
     last_checkpoint = None
@@ -383,7 +383,7 @@ def main():
                 model.longformer.encoder.load_state_dict(encoder.encoder.state_dict())  # load weights
                 model.classifier.out_proj.load_state_dict(classifier.state_dict())  # load weights
 
-        if model_args.use_adapters:
+        if model_args.train_type == TrainType.ADAPTERS:
             # Setup adapters
             if adapter_args.train_adapter:
                 task_name = data_args.task_name
@@ -434,6 +434,14 @@ def main():
                         "Adapters can only be loaded in adapters training mode."
                         "Use --train_adapter to enable adapter training"
                     )
+
+        if model_args.train_type == TrainType.BITFIT:
+            # https://arxiv.org/abs/2106.10199, https://arxiv.org/abs/2109.00904
+            for p in model.named_parameters():
+                if "bias" in p[0]:
+                    p[1].requires_bias = True
+                else:
+                    p[1].requires_bias = False
 
         logger.info(model)
 
@@ -652,7 +660,7 @@ def main():
         logger.info(f"Model state dict saved to {folder}/model.bin")
 
         # save adapters
-        if model_args.use_adapters:
+        if model_args.train_type == TrainType.ADAPTERS:
             model.save_adapter(folder, data_args.task_name)
 
     class CheckpointCallback(TrainerCallback):

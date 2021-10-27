@@ -18,7 +18,7 @@ while [ $# -gt 0 ]; do
     TRAIN_MODE="${1#*=}" # either 'train' or 'test'
     ;;
   --train_type=*)
-    TRAIN_TYPE="${1#*=}" # one of 'adapters' or 'finetune'
+    TRAIN_TYPE="${1#*=}" # one of 'finetune', 'adapters' or 'bitfit'
     ;;
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
@@ -104,7 +104,6 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 [ "$TRAIN_MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
 [ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$TRAIN_TYPE/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
-[ "$TRAIN_TYPE" == "adapters" ] && USE_ADAPTERS="True" || USE_ADAPTERS="False"
 
 CMD="python run_tc.py
   --problem_type single_label_classification
@@ -142,7 +141,7 @@ CMD="python run_tc.py
   --overwrite_output_dir True
   --overwrite_cache $OVERWRITE_CACHE
   --test_on_sub_datasets $SUB_DATASETS
-  --use_adapters $USE_ADAPTERS
+  --train_type $TRAIN_TYPE
   --train_adapter $TRAIN
   $MAX_SAMPLES_ENABLED
 "

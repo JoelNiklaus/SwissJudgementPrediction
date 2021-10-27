@@ -9,7 +9,13 @@ class LongInputBertType(str, ExplicitEnum):
     LONG = "long"
     LONGFORMER = "longformer"
     HIERARCHICAL = "hierarchical"
-    EFFICIENT = "efficient"  # bigbird, performer, etc.
+    EFFICIENT = "efficient"  # big_bird, performer, etc.
+
+
+class TrainType(str, ExplicitEnum):
+    FINETUNE = "finetune"
+    ADAPTERS = "adapters"
+    BITFIT = "bitfit"
 
 
 class LabelImbalanceMethod(str, ExplicitEnum):
@@ -29,8 +35,8 @@ class ModelArguments:
     long_input_bert_type: LongInputBertType = field(
         default="standard", metadata={"help": f"Which bert type to use for handling long text inputs."},
     )
-    use_adapters: bool = field(
-        default=False, metadata={"help": "If True uses adapters instead of finetuning the model."},
+    train_type: TrainType = field(
+        default="adapters", metadata={"help": "Which finetuning type to use."},
     )
     use_pretrained_model: bool = field(
         default=True, metadata={"help": "If True uses a pretrained model."},
