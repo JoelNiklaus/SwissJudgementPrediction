@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 class LongInputBertType(str, ExplicitEnum):
     STANDARD = "standard"
     LONG = "long"
-    LONGFORMER = "longformer"
     HIERARCHICAL = "hierarchical"
     EFFICIENT = "efficient"  # big_bird, performer, etc.
 

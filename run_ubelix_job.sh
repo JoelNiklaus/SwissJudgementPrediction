@@ -17,8 +17,8 @@
 
 # Put your code below this line
 
-#           $1: train_type, $2: train_mode, $3: model_name, $4: model_name, $5: train_language, $6: language, $7: sub_datasets
-bash run.sh --train_type=$1 --train_mode=$2 --model_name=$3 --model_name=$4 --train_language=$5 --language=$6 --sub_datasets=$7 \
+#           $1: train_type, $2: train_mode, $3: model_name, $4: model_type, $5: train_language, $6: language, $7: sub_datasets
+bash run.sh --train_type=$1 --train_mode=$2 --model_name=$3 --model_type=$4 --train_language=$5 --language=$6 --sub_datasets=$7 \
   --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
 
 # Example: bash run.sh --train_type=adapters --train_mode=train --model_name=xlm-roberta-base --model_type=hierarchical --train_language=it --language=it  --sub_datasets=False --seed=1 --debug=True
