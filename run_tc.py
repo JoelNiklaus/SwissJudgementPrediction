@@ -87,10 +87,7 @@ logger = logging.getLogger(__name__)
 
 faulthandler.enable()
 
-model_types = ['distilbert', 'bert', 'roberta', 'camembert', 'big_bird']
 languages = ['de', 'fr', 'it']
-
-
 
 logger.warning("This script only supports PyTorch models!")
 
@@ -254,25 +251,6 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    def get_encoder_and_classifier(model):
-        if config.model_type not in model_types:
-            raise ValueError(f"{config.model_type} is not supported. "
-                             f"Please use one of the supported model types {model_types}")
-        # if model_args.use_adapters:  # in adapter-transformers we should be able access the encoder like this directly
-        #    encoder = model.encoder
-        # else:
-        # TODO try to get it with model.base_model
-        if config.model_type == 'distilbert':
-            encoder = model.distilbert
-        if config.model_type in ['bert', 'big_bird']:
-            encoder = model.bert
-        if config.model_type in ['camembert', 'xlm-roberta', 'roberta']:
-            encoder = model.roberta
-
-        classifier = model.classifier
-        # classifier = model.heads
-        return encoder, classifier
-
     def model_init():
         if model_args.use_pretrained_model:
             model = AutoModelForSequenceClassification.from_pretrained(
@@ -301,50 +279,33 @@ def main():
         #    id2label=label_dict['id2label'],
         # )
 
-        if model_args.long_input_bert_type not in [LongInputBertType.STANDARD, LongInputBertType.EFFICIENT]:
-            logger.info('Configuring non-standard BERT variants')
-            encoder, classifier = get_encoder_and_classifier(model)
+        if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
+            if config.model_type == 'bert':
+                config_class = HierBertConfig
+                model_class = HierBertForSequenceClassification
+            if config.model_type == 'roberta':
+                config_class = HierRobertaConfig
+                model_class = HierRobertaForSequenceClassification
+            if config.model_type == 'xlm-roberta':
+                config_class = HierXLMRobertaConfig
+                model_class = HierXLMRobertaForSequenceClassification
+            if config.model_type == 'camembert':
+                config_class = HierCamembertConfig
+                model_class = HierCamembertForSequenceClassification
 
-            if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-                if config.model_type == 'bert':
-                    config_class = HierBertConfig
-                    model_class = HierBertForSequenceClassification
-                if config.model_type == 'roberta':
-                    config_class = HierRobertaConfig
-                    model_class = HierRobertaForSequenceClassification
-                if config.model_type == 'xlm-roberta':
-                    config_class = HierXLMRobertaConfig
-                    model_class = HierXLMRobertaForSequenceClassification
-                if config.model_type == 'camembert':
-                    config_class = HierCamembertConfig
-                    model_class = HierCamembertForSequenceClassification
+            hier_bert_config = config_class(max_segments=data_args.max_segments,
+                                            max_segment_length=data_args.max_seg_len,
+                                            segment_encoder_type="transformer",
+                                            **config.to_dict())
+            model = model_class.from_pretrained(model_args.model_name_or_path, config=hier_bert_config)
 
-                hier_bert_config = config_class(max_segments=data_args.max_segments,
-                                                max_segment_length=data_args.max_seg_len,
-                                                segment_encoder_type="transformer", **config.to_dict())
-                model = model_class.from_pretrained(model_args.model_name_or_path, config=hier_bert_config)
+        if model_args.long_input_bert_type == LongInputBertType.LONG:
+            model.base_model = LongBert.resize_position_embeddings(model.base_model,
+                                                                   max_length=data_args.max_seq_len,
+                                                                   device=training_args.device)
 
-            if model_args.long_input_bert_type == LongInputBertType.LONG:
-                long_input_bert = LongBert.resize_position_embeddings(encoder, max_length=data_args.max_seq_len,
-                                                                      device=training_args.device)
-
-            if model_args.long_input_bert_type == LongInputBertType.LONG:
-                if config.model_type == 'distilbert':
-                    model.distilbert = long_input_bert
-
-                if config.model_type in ['bert', 'big_bird']:
-                    model.bert = long_input_bert
-
-                if config.model_type in ['camembert', 'xlm-roberta', 'roberta']:
-                    model.roberta = long_input_bert
-                    if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
-                        dense = nn.Linear(config.hidden_size, config.hidden_size)
-                        dense.load_state_dict(classifier.dense.state_dict())  # load weights
-                        dropout = nn.Dropout(config.hidden_dropout_prob).to(training_args.device)
-                        out_proj = nn.Linear(config.hidden_size, config.num_labels).to(training_args.device)
-                        out_proj.load_state_dict(classifier.out_proj.state_dict())  # load weights
-                        model.classifier = nn.Sequential(dense, dropout, out_proj).to(training_args.device)
-
+        # TODO test if this is still necessary.
+        if model_args.long_input_bert_type in [LongInputBertType.LONG, LongInputBertType.HIERARCHICAL]:
             if last_checkpoint or not training_args.do_train:
                 # Make sure we really load all the weights after we modified the models
                 model_path = f'{model_args.model_name_or_path}/model.bin'
@@ -366,11 +327,7 @@ def main():
                     )
                     # load a pre-trained from Hub if specified
                     if adapter_args.load_adapter:
-                        model.load_adapter(
-                            adapter_args.load_adapter,
-                            config=adapter_config,
-                            load_as=task_name,
-                        )
+                        model.load_adapter(adapter_args.load_adapter, config=adapter_config, load_as=task_name)
                     # otherwise, add a fresh adapter
                     else:
                         model.add_adapter(task_name, config=adapter_config)
