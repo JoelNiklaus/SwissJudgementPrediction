@@ -17,14 +17,15 @@
 
 # Put your code below this line
 
-#           $1: model_name, $2: model_type, $3: language, $4: train_language, $5: train_mode, $6: train_type, $7: sub_datasets
-bash run.sh --model_name=$1 --model_type=$2 --language=$3 --train_language=$4 --train_mode=$5 --train_type=$6 --sub_datasets=$7 \
+#           $1: train_type, $2: train_mode, $3: model_name, $4: model_name, $5: train_language, $6: language, $7: sub_datasets
+bash run.sh --train_type=$1 --train_mode=$2 --model_name=$3 --model_name=$4 --train_language=$5 --language=$6 --sub_datasets=$7 \
   --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
 
-# Example:   bash run.sh --model_name=bert-base-multilingual-cased --model_type=standard --language=it --train_language=it --train_mode=train --train_type=adapters --sub_datasets=False --seed=1 --debug=True
+# Example: bash run.sh --train_type=adapters --train_mode=train --model_name=xlm-roberta-base --model_type=hierarchical --train_language=it --language=it  --sub_datasets=False --seed=1 --debug=True
+# Example: sbatch run_ubelix_job.sh adapters train xlm-roberta-base hierarchical de de False
 
 # IMPORTANT:
-# Run with                  sbatch run_ubelix_job.sl
+# Run with                  sbatch run_ubelix_job.sh
 # check with                squeue --user=jn20t930 --jobs={job_id}
 # monitor with              scontrol show --detail jobid {job_id}
 # cancel with               scancel {job_id}

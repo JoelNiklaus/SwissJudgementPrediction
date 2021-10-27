@@ -2,23 +2,23 @@
 
 while [ $# -gt 0 ]; do
   case "$1" in
-  --model_name=*)
-    MODEL_NAME="${1#*=}" # a model name from huggingface hub
-    ;;
-  --model_type=*)
-    MODEL_TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'longformer', 'efficient'
-    ;;
-  --language=*)
-    LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
-    ;;
-  --train_language=*)
-    TRAIN_LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
+  --train_type=*)
+    TRAIN_TYPE="${1#*=}" # one of 'finetune', 'adapters' or 'bitfit'
     ;;
   --train_mode=*)
     TRAIN_MODE="${1#*=}" # either 'train' or 'test'
     ;;
-  --train_type=*)
-    TRAIN_TYPE="${1#*=}" # one of 'finetune', 'adapters' or 'bitfit'
+  --model_name=*)
+    MODEL_NAME="${1#*=}" # a model name from huggingface hub
+    ;;
+  --model_type=*)
+    MODEL_TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'efficient'
+    ;;
+  --train_language=*)
+    TRAIN_LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
+    ;;
+  --language=*)
+    LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
     ;;
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
@@ -39,15 +39,15 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-printf "Argument MODEL_NAME is \t\t\t %s\n"      "$MODEL_NAME"
-printf "Argument MODEL_TYPE is \t\t\t %s\n"      "$MODEL_TYPE"
-printf "Argument LANGUAGE is \t\t\t %s\n"        "$LANGUAGE"
-printf "Argument TRAIN_LANGUAGE is \t\t %s\n"    "$TRAIN_LANGUAGE"
-printf "Argument TRAIN_MODE is \t\t\t %s\n"      "$TRAIN_MODE"
-printf "Argument TRAIN_TYPE is \t\t\t %s\n"      "$TRAIN_TYPE"
-printf "Argument SUB_DATASETS is \t\t %s\n"      "$SUB_DATASETS"
-printf "Argument SEED is \t\t\t %s\n"            "$SEED"
-printf "Argument DEBUG is \t\t\t %s\n"           "$DEBUG"
+printf "Argument TRAIN_TYPE is \t\t\t %s\n" "$TRAIN_TYPE"
+printf "Argument TRAIN_MODE is \t\t\t %s\n" "$TRAIN_MODE"
+printf "Argument MODEL_NAME is \t\t\t %s\n" "$MODEL_NAME"
+printf "Argument MODEL_TYPE is \t\t\t %s\n" "$MODEL_TYPE"
+printf "Argument TRAIN_LANGUAGE is \t\t %s\n" "$TRAIN_LANGUAGE"
+printf "Argument LANGUAGE is \t\t\t %s\n" "$LANGUAGE"
+printf "Argument SUB_DATASETS is \t\t %s\n" "$SUB_DATASETS"
+printf "Argument SEED is \t\t\t %s\n" "$SEED"
+printf "Argument DEBUG is \t\t\t %s\n" "$DEBUG"
 
 MAX_SAMPLES=100
 # enable max samples in debug mode to make it run faster
@@ -92,8 +92,7 @@ fi
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$MODEL_TYPE
-DIR=$BASE_DIR/$TRAIN_TYPE/$TRAIN_MODE/$MODEL/$LANGUAGE
-[ "$TRAIN_MODE" == "test" ] && DIR="$DIR/$TRAIN_LANGUAGE"
+DIR=$BASE_DIR/$TRAIN_TYPE/$TRAIN_MODE/$MODEL/$TRAIN_LANGUAGE/$LANGUAGE
 DIR=$DIR/$SEED
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
@@ -103,12 +102,12 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # disable training if we are not in train mode
 [ "$TRAIN_MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
-[ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$TRAIN_TYPE/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
+[ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$TRAIN_TYPE/train/$MODEL/$TRAIN_LANGUAGE/$LANGUAGE/$SEED"
 
 CMD="python run_tc.py
   --problem_type single_label_classification
   --model_name_or_path $MODEL_PATH
-  --run_name $TRAIN_MODE-$MODEL-$LANGUAGE-$TRAIN_LANGUAGE-$SEED
+  --run_name $TRAIN_TYPE-$TRAIN_MODE-$MODEL-$TRAIN_LANGUAGE-$LANGUAGE-$SEED
   --output_dir $DIR
   --long_input_bert_type $MODEL_TYPE
   --learning_rate $LR
