@@ -1,59 +1,67 @@
 import faulthandler
 
-from torch import nn
+import torch
 from transformers import (
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
+    AutoTokenizer, AutoConfig,
 )
+from transformers.adapters.configuration import AdapterConfig
 
-from HierarchicalBert import HierarchicalBert
+from src.hier_bert.configuration_hier_bert import HierBertConfig
+from src.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
 
 faulthandler.enable()
 
-max_segments = 2
-max_doc_length = 1024
-max_length = max_doc_length - max_segments * 2
+padding = "max_length"
+max_segments = 4
+max_seg_len = 512
+task_name = "sjp"
 device = 'cpu'  # 'cpu'  # 'cuda:0'
 
-model_name = "xlm-roberta-base"
-model_type = 'xlm-roberta'
-model = AutoModelForSequenceClassification.from_pretrained(model_name)
+model_name = "bert-base-uncased"
+config = AutoConfig.from_pretrained(model_name)
+config_dict = config.to_dict()
+config = HierBertConfig(max_segments=max_segments, max_segment_length=max_seg_len, segment_encoder_type="transformer", **config_dict)
+model = HierBertForSequenceClassification.from_pretrained(model_name, config=config)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-if model_type == 'bert':
-    encoder = model.bert
+adapter_config = AdapterConfig.load("pfeiffer", non_linearity=None, reduction_factor=None)
+model.add_adapter(task_name, config=adapter_config)
+model.train_adapter([task_name])
+model.set_active_adapters(task_name)
 
-if model_type in ['camembert', 'xlm-roberta']:
-    encoder = model.roberta
+def preprocess_function(batch):
+    batch['segments'] = []
+    tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
+                          max_length=max_segments * max_seg_len)
+    for ids in tokenized['input_ids']:
+        # convert ids to tokens and then back to strings
+        id_blocks = [ids[i:i + max_seg_len] for i in range(0, len(ids), max_seg_len)]
+        token_blocks = [tokenizer.convert_ids_to_tokens(ids) for ids in id_blocks]
+        string_blocks = [tokenizer.convert_tokens_to_string(tokens) for tokens in token_blocks]
+        batch['segments'].append(string_blocks)
 
-hier_bert = HierarchicalBert(encoder,
-                             max_segments=max_segments,
-                             max_segment_length=512,
-                             cls_token_id=tokenizer.cls_token_id,
-                             sep_token_id=tokenizer.sep_token_id,
-                             device=device,
-                             seg_encoder_type='lstm')
+    # Tokenize the texts
+    def append_zero_segments(case_encodings):
+        """appends a list of zero segments to the encodings to make up for missing segments"""
+        return case_encodings + [[0] * max_seg_len] * (max_segments - len(case_encodings))
 
-if model_type == 'bert':
-    model.bert = hier_bert
+    tokenized = {'input_ids': [], 'attention_mask': [], 'token_type_ids': []}
+    for case in batch['segments']:
+        case_encodings = tokenizer(case[:max_segments], padding=padding, truncation=True,
+                                   max_length=max_seg_len, return_token_type_ids=True)
+        tokenized['input_ids'].append(append_zero_segments(case_encodings['input_ids']))
+        tokenized['attention_mask'].append(append_zero_segments(case_encodings['attention_mask']))
+        tokenized['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids']))
+    del batch['segments']
 
-if model_type in ['camembert', 'xlm-roberta']:
-    dropout = nn.Dropout(model.config.hidden_dropout_prob)
-    out_proj = nn.Linear(model.config.hidden_size, model.config.num_labels)
-    model.classifier = nn.Sequential(dropout, out_proj)
-    model.roberta = hier_bert
-
-batch = tokenizer(['a ' * 1024] * 4, truncation=True, padding='max_length',
-                  max_length=max_length, add_special_tokens=False, return_tensors='pt', return_token_type_ids=True)
-
-# This is only necessary if return_token_type_ids is False
-# if not hasattr(tokenized, 'token_type_ids'):  # RoBERTa based models do not use token_type_ids
-#    tokenized['token_type_ids'] = [tokenizer.create_token_type_ids_from_sequences(input_id) for input_id in tokenized['input_ids']]
-# This should be done if return_tensors is enabled
-# tokenized['token_type_ids'] = torch.zeros(tokenized['input_ids'].size(), dtype=torch.int, device=training_args.device)
+    return tokenized
 
 
-outputs = model(input_ids=batch['input_ids'],
-                attention_mask=batch['attention_mask'],
-                token_type_ids=batch['token_type_ids'])
+batch = {"text": ['a' * max_segments * max_seg_len] * 4}
+batch = preprocess_function(batch)
+print("tokenization successful")
+
+outputs = model(input_ids=torch.tensor(batch['input_ids'], device=device),
+                attention_mask=torch.tensor(batch['attention_mask'], device=device),
+                token_type_ids=torch.tensor(batch['token_type_ids'], device=device))
 print(outputs)
