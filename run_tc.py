@@ -73,6 +73,7 @@ from hierarchical.hier_roberta.modeling_hier_roberta import HierRobertaForSequen
 from hierarchical.hier_xlm_roberta.configuration_hier_xlm_roberta import HierXLMRobertaConfig
 from hierarchical.hier_xlm_roberta.modeling_hier_xlm_roberta import HierXLMRobertaForSequenceClassification
 from arguments.model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType, TrainType
+from utils.sentencizer import get_sentencizer
 
 os.environ['WANDB_MODE'] = "online"
 # os.environ['WANDB_NOTES'] = "Enter notes here"
@@ -90,23 +91,6 @@ model_types = ['distilbert', 'bert', 'roberta', 'camembert', 'big_bird']
 languages = ['de', 'fr', 'it']
 
 
-def get_sentencizer(lang):
-    if lang == 'de':
-        from spacy.lang.de import German
-        nlp = German()
-    elif lang == 'fr':
-        from spacy.lang.fr import French
-        nlp = French()
-    elif lang == 'it':
-        from spacy.lang.it import Italian
-        nlp = Italian()
-    else:
-        raise ValueError(f"Please choose one of the following languages: {languages}")
-    nlp.add_pipe("sentencizer")
-    return nlp
-
-
-sentencicers = {lang: get_sentencizer(lang) for lang in languages}
 
 logger.warning("This script only supports PyTorch models!")
 
@@ -441,6 +425,9 @@ def main():
         # IMPORTANT: Can lead to problem with HierarchicalBert
         padding = "longest"
 
+    if data_args.segmentation_type == SegmentationType.SENTENCE:
+        sentencizers = {lang: get_sentencizer(lang) for lang in languages}
+
     def preprocess_function(batch):
         if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
             batch['segments'] = []
@@ -459,12 +446,12 @@ def main():
                 # For the moment just do it so we can test the new bert variant
                 sents_list = []
                 if model_args.evaluation_language != 'all':
-                    nlp = sentencicers[model_args.evaluation_language]
+                    nlp = sentencizers[model_args.evaluation_language]
                     for doc in nlp.pipe(batch['text'], batch_size=len(batch['text'])):
                         sents_list.append([sent.text for sent in doc.sents])
                 else:  # if the languages are mixed we need to load it from the case
                     for case in batch['text']:
-                        nlp = sentencicers[case['language']]
+                        nlp = sentencizers[case['language']]
                         sents_list.append([sent.text for sent in nlp(case).sents])
                 for sents in sents_list:
                     sentences = []
