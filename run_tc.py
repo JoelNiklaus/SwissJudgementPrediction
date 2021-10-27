@@ -62,17 +62,17 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
-import LongBert
-from data_arguments import DataArguments, ProblemType, SegmentationType
-from hier_bert.configuration_hier_bert import HierBertConfig
-from hier_bert.modeling_hier_bert import HierBertForSequenceClassification
-from hier_camembert.configuration_hier_camembert import HierCamembertConfig
-from hier_camembert.modeling_hier_camembert import HierCamembertForSequenceClassification
-from hier_roberta.configuration_hier_roberta import HierRobertaConfig
-from hier_roberta.modeling_hier_roberta import HierRobertaForSequenceClassification
-from hier_xlm_roberta.configuration_hier_xlm_roberta import HierXLMRobertaConfig
-from hier_xlm_roberta.modeling_hier_xlm_roberta import HierXLMRobertaForSequenceClassification
-from model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType, TrainType
+from long import LongBert
+from arguments.data_arguments import DataArguments, ProblemType, SegmentationType
+from hierarchical.hier_bert.configuration_hier_bert import HierBertConfig
+from hierarchical.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
+from hierarchical.hier_camembert.configuration_hier_camembert import HierCamembertConfig
+from hierarchical.hier_camembert.modeling_hier_camembert import HierCamembertForSequenceClassification
+from hierarchical.hier_roberta.configuration_hier_roberta import HierRobertaConfig
+from hierarchical.hier_roberta.modeling_hier_roberta import HierRobertaForSequenceClassification
+from hierarchical.hier_xlm_roberta.configuration_hier_xlm_roberta import HierXLMRobertaConfig
+from hierarchical.hier_xlm_roberta.modeling_hier_xlm_roberta import HierXLMRobertaForSequenceClassification
+from arguments.model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType, TrainType
 
 os.environ['WANDB_MODE'] = "online"
 # os.environ['WANDB_NOTES'] = "Enter notes here"
@@ -89,8 +89,6 @@ faulthandler.enable()
 model_types = ['distilbert', 'bert', 'roberta', 'camembert', 'big_bird']
 languages = ['de', 'fr', 'it']
 
-
-# TODO refactor code into separate folder
 
 def get_sentencizer(lang):
     if lang == 'de':

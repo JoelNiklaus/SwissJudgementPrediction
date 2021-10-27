@@ -6,8 +6,8 @@ from transformers import (
 )
 from transformers.adapters.configuration import AdapterConfig
 
-from src.hier_bert.configuration_hier_bert import HierBertConfig
-from src.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
+from hierarchical.hier_bert.configuration_hier_bert import HierBertConfig
+from hierarchical.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
 
 faulthandler.enable()
 

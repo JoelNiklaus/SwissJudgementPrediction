@@ -3,7 +3,7 @@ import faulthandler
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # IMPORTANT: This can lead to memory and performance issues with too high max_length because of the quadratic attention!
-import LongBert
+from long import LongBert
 
 faulthandler.enable()
 
