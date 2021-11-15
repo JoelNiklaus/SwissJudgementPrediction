@@ -241,6 +241,9 @@ def main():
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
+        max_segments=data_args.max_segments,
+        max_segment_length=data_args.max_seg_len,
+        segment_encoder_type="transformer",
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
@@ -293,10 +296,8 @@ def main():
                 config_class = HierCamembertConfig
                 model_class = HierCamembertForSequenceClassification
 
-            hier_bert_config = config_class(max_segments=data_args.max_segments,
-                                            max_segment_length=data_args.max_seg_len,
-                                            segment_encoder_type="transformer",
-                                            **config.to_dict())
+            # TODO: Make sure the model loads the segment_encoder weights
+            hier_bert_config = config_class(**config.to_dict())
             model = model_class.from_pretrained(model_args.model_name_or_path, config=hier_bert_config)
 
         if model_args.long_input_bert_type == LongInputBertType.LONG:
@@ -311,7 +312,7 @@ def main():
                 model_path = f'{model_args.model_name_or_path}/model.bin'
                 if Path(model_path).exists():
                     logger.info(f"loading file {model_path}")
-                    model.load_state_dict(torch.load(model_path))
+                    model.load_state_dict(torch.load(model_path, map_location=training_args.device))
 
         if model_args.train_type == TrainType.ADAPTERS:
             # Setup adapters
@@ -344,6 +345,7 @@ def main():
                         adapter_args.load_lang_adapter,
                         config=lang_adapter_config,
                         load_as=adapter_args.language,
+                        model_name=model_args.model_name
                     )
                 else:
                     lang_adapter_name = None
@@ -382,6 +384,7 @@ def main():
         # IMPORTANT: Can lead to problem with HierarchicalBert
         padding = "longest"
 
+    # TODO do sentence splitting beforehand in the SCRC dataset creation
     if data_args.segmentation_type == SegmentationType.SENTENCE:
         sentencizers = {lang: get_sentencizer(lang) for lang in languages}
 
@@ -504,8 +507,10 @@ def main():
         preds = p.predictions
         preds, labels, probs = process_results(preds, labels)
 
+        # TODO: add roc_auc_score and average_precision_score
+
         accuracy = accuracy_score(labels, preds)
-        # weighted averaging is a better evaluation metric for imbalanced label distributions
+        # macro averaging is a better evaluation metric for imbalanced label distributions
         precision, recall, f1_weighted, _ = precision_recall_fscore_support(labels, preds, average='weighted')
         f1_micro = f1_score(labels, preds, average='micro')
         f1_macro = f1_score(labels, preds, average='macro')

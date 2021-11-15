@@ -59,7 +59,7 @@ MAX_SAMPLES=100
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
 LR=3e-5                             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
-NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway
+NUM_EPOCHS=20                       # high enough to be save, we use EarlyStopping anyway
 LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
 SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
 OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
@@ -92,7 +92,7 @@ fi
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$MODEL_TYPE
-DIR=$BASE_DIR/$TRAIN_TYPE/$TRAIN_MODE/$MODEL/$TRAIN_LANGUAGE/$LANGUAGE
+DIR=$BASE_DIR/$TRAIN_TYPE/$TRAIN_MODE/$MODEL/$TRAIN_LANGUAGE
 DIR=$DIR/$SEED
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
@@ -102,10 +102,21 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # disable training if we are not in train mode
 [ "$TRAIN_MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
-[ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$TRAIN_TYPE/train/$MODEL/$TRAIN_LANGUAGE/$LANGUAGE/$SEED"
+[ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$TRAIN_TYPE/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
+
+# Adapter Configs
+# Italian: https://adapterhub.ml/adapters/ukp/xlm-roberta-base-it-wiki_pfeiffer/
+# French: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-fr-wiki_pfeiffer/
+# German: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-de-wiki_pfeiffer/, https://adapterhub.ml/adapters/ukp/xlm-roberta-base-de-wiki_pfeiffer/
+# IMPORTANT: so far, there is no xlm-roberta-base adapter for French and no bert-base-multilingual-cased adapter for Italian
+[ "$LANGUAGE" != "$TRAIN_LANGUAGE" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="False"
+LANG_ADAPTER_CONFIG=pfeiffer
+[ "$LANGUAGE" == "it" ] && LANG_ADAPTER_NON_LINEARITY="relu" || LANG_ADAPTER_NON_LINEARITY="gelu"
+LANG_ADAPTER_REDUCTION_FACTOR=2
 
 CMD="python run_tc.py
   --problem_type single_label_classification
+  --model_name $MODEL_NAME
   --model_name_or_path $MODEL_PATH
   --run_name $TRAIN_TYPE-$TRAIN_MODE-$MODEL-$TRAIN_LANGUAGE-$LANGUAGE-$SEED
   --output_dir $DIR
@@ -141,7 +152,12 @@ CMD="python run_tc.py
   --overwrite_cache $OVERWRITE_CACHE
   --test_on_sub_datasets $SUB_DATASETS
   --train_type $TRAIN_TYPE
-  --train_adapter $TRAIN
+  --train_adapter True
+  --load_lang_adapter $LOAD_LANG_ADAPTER
+  --lang_adapter_config $LANG_ADAPTER_CONFIG
+  --lang_adapter_non_linearity $LANG_ADAPTER_NON_LINEARITY
+  --lang_adapter_reduction_factor $LANG_ADAPTER_REDUCTION_FACTOR
+  --language $LANGUAGE
   $MAX_SAMPLES_ENABLED
 "
 #  --label_smoothing_factor 0.1 \ # does not work with custom loss function

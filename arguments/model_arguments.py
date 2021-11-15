@@ -31,6 +31,9 @@ class ModelArguments:
     model_name_or_path: str = field(
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"},
     )
+    model_name: str = field(
+        default=None, metadata={"help": "Model identifier from huggingface.co/models"},
+    )
     long_input_bert_type: LongInputBertType = field(
         default="standard", metadata={"help": f"Which bert type to use for handling long text inputs."},
     )

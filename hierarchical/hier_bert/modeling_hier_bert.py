@@ -112,6 +112,7 @@ class HierBertForSequenceClassification(ModelWithHeadsAdaptersMixin, BertPreTrai
         )
 
         # TODO the outputs might have the wrong shape here
+        # in the original model it takes outputs[1]
 
         encoder_outputs = outputs[0].contiguous().view(input_ids.size(0), self.max_segments,
                                                        self.max_segment_length, self.hidden_size)

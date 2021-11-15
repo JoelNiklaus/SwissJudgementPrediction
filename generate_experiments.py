@@ -14,6 +14,9 @@ import pandas as pd
 # TODO translate all cases to one language and evaluate on that language with native model
 # TODO use paraphrases/backtranslation as data augmentation
 
+# TODO try counterfactual data augmentation to improve performance
+# TODO think about including more metadata into dataset (like party information, judge information, citations, etc.)
+
 # microsoft/Multilingual-MiniLM-L12-H384
 model_names = {  # distilbert-base-multilingual-cased, google/rembert (not yet in adapter-transformers), google/mt5-base (not yet in adapter-transformers),
     'de': ['xlm-roberta-base', 'deepset/gbert-base'],
@@ -30,7 +33,7 @@ train_experiments = []
 for lang in languages:
     for type in types:
         for model_name in model_names[lang]:
-            experiment = {"model_name": model_name, "type": type, "lang": lang, "status": ""}
+            experiment = {"model_name": model_name, "type": type, "source_lang": lang, "status": ""}
             train_experiments.append(experiment)
 df = pd.DataFrame(train_experiments)
 df.to_csv("train_experiments.csv", index=False)
