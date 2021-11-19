@@ -12,6 +12,7 @@ import os
 import pprint
 import random
 import sys
+from collections import OrderedDict
 
 import dataclasses
 import shutil
@@ -24,12 +25,13 @@ import numpy as np
 import pandas as pd
 
 from sklearn.metrics import (
-    accuracy_score,
     precision_recall_fscore_support,
     multilabel_confusion_matrix,
     classification_report,
     confusion_matrix,
-    f1_score, balanced_accuracy_score,
+    balanced_accuracy_score,
+    roc_auc_score,
+    average_precision_score
 )
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.utils import compute_class_weight
@@ -363,6 +365,7 @@ def main():
                         "Use --train_adapter to enable adapter training"
                     )
 
+        # TODO test this!
         if model_args.train_type == TrainType.BITFIT:
             # https://arxiv.org/abs/2106.10199, https://arxiv.org/abs/2109.00904
             for p in model.named_parameters():
@@ -507,23 +510,20 @@ def main():
         preds = p.predictions
         preds, labels, probs = process_results(preds, labels)
 
-        # TODO: add roc_auc_score and average_precision_score
-
-        accuracy = accuracy_score(labels, preds)
-        # macro averaging is a better evaluation metric for imbalanced label distributions
-        precision, recall, f1_weighted, _ = precision_recall_fscore_support(labels, preds, average='weighted')
-        f1_micro = f1_score(labels, preds, average='micro')
-        f1_macro = f1_score(labels, preds, average='macro')
+        positive_probs = probs[:, 1]  # get only the probs of the positive class (only in binary classification!)
+        average_precision = average_precision_score(labels, positive_probs)
+        roc_auc = roc_auc_score(labels, positive_probs)
         balanced_accuracy = balanced_accuracy_score(labels, preds)
-        return {
-            'accuracy': accuracy,
+        # macro averaging is a better evaluation metric for imbalanced label distributions
+        precision, recall, f1_macro, _ = precision_recall_fscore_support(labels, preds, average='macro')
+        return OrderedDict({
+            'average_precision': average_precision,
+            'roc_auc': roc_auc,
+            'balanced_accuracy': balanced_accuracy,
+            'f1_macro': f1_macro,
             'precision': precision,
             'recall': recall,
-            'f1_weighted': f1_weighted,
-            'f1_micro': f1_micro,
-            'f1_macro': f1_macro,
-            'balanced_accuracy': balanced_accuracy
-        }
+        })
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
     if data_args.pad_to_max_length:
