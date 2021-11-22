@@ -396,7 +396,8 @@ def main():
             batch['segments'] = []
             if data_args.segmentation_type == SegmentationType.BLOCK:
                 tokenized = tokenizer(batch["text"], padding=padding, truncation=True,
-                                      max_length=data_args.max_segments * data_args.max_seg_len)
+                                      max_length=data_args.max_segments * data_args.max_seg_len,
+                                      add_special_tokens=False)  # prevent it from adding the cls and sep tokens twice
                 for ids in tokenized['input_ids']:
                     # convert ids to tokens and then back to strings
                     id_blocks = [ids[i:i + data_args.max_seg_len] for i in range(0, len(ids), data_args.max_seg_len)]
