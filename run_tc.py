@@ -431,9 +431,10 @@ def main():
             for case in batch['segments']:
                 case_encodings = tokenizer(case[:data_args.max_segments], padding=padding, truncation=True,
                                            max_length=data_args.max_seg_len, return_token_type_ids=True)
-                tokenized['input_ids'].append(append_zero_segments(case_encodings['input_ids']))
-                tokenized['attention_mask'].append(append_zero_segments(case_encodings['attention_mask']))
-                tokenized['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids']))
+                pad_token_id = tokenizer.pad_token_id
+                tokenized['input_ids'].append(append_zero_segments(case_encodings['input_ids'], pad_token_id))
+                tokenized['attention_mask'].append(append_zero_segments(case_encodings['attention_mask'], pad_token_id))
+                tokenized['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids'], pad_token_id))
             del batch['segments']
         else:
             # Tokenize the texts
@@ -448,9 +449,9 @@ def main():
                 tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
         return tokenized
 
-    def append_zero_segments(case_encodings, tokenizer):
+    def append_zero_segments(case_encodings, pad_token_id):
         """appends a list of zero segments to the encodings to make up for missing segments"""
-        return case_encodings + [[tokenizer.pad_token_id] * data_args.max_seg_len] * (data_args.max_segments - len(case_encodings))
+        return case_encodings + [[pad_token_id] * data_args.max_seg_len] * (data_args.max_segments - len(case_encodings))
 
     def preprocess_dataset(dataset):
         return dataset.map(
