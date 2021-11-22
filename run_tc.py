@@ -447,9 +447,9 @@ def main():
                 tokenized["label"] = [label_dict["label2id"][l] for l in batch["label"]]
         return tokenized
 
-    def append_zero_segments(case_encodings):
+    def append_zero_segments(case_encodings, tokenizer):
         """appends a list of zero segments to the encodings to make up for missing segments"""
-        return case_encodings + [[0] * data_args.max_seg_len] * (data_args.max_segments - len(case_encodings))
+        return case_encodings + [[tokenizer.pad_token_id] * data_args.max_seg_len] * (data_args.max_segments - len(case_encodings))
 
     def preprocess_dataset(dataset):
         return dataset.map(
