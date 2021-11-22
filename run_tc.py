@@ -335,7 +335,7 @@ def main():
                     else:
                         model.add_adapter(task_name, config=adapter_config)
                 # optionally load a pre-trained language adapter
-                if adapter_args.load_lang_adapter:
+                if adapter_args.load_lang_adapter and adapter_args.load_lang_adapter not in ['False', 'None']:
                     # resolve the language adapter config
                     lang_adapter_config = AdapterConfig.load(
                         adapter_args.lang_adapter_config,
