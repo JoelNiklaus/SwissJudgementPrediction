@@ -370,9 +370,9 @@ def main():
             # https://arxiv.org/abs/2106.10199, https://arxiv.org/abs/2109.00904
             for p in model.named_parameters():
                 if "bias" in p[0]:
-                    p[1].requires_bias = True
+                    p[1].requires_grad = True
                 else:
-                    p[1].requires_bias = False
+                    p[1].requires_grad = False
 
         logger.info(model)
 
