@@ -136,15 +136,16 @@ class HierRobertaForSequenceClassification(ModelWithHeadsAdaptersMixin, RobertaP
         if self.segment_encoder_type == 'transformer':
             # Transformer on top of segment encodings --> (16, 10, 768)
             # Infer real segments, i.e., mask paddings (like attention_mask but on a segment level)
-            seg_mask = (torch.sum(input_ids, 2) != self.config.pad_token_id).to(input_ids.dtype)
+            seg_mask = (input_ids[:, :, 0] != self.config.pad_token_id).to(input_ids.dtype)
             # seg_mask = (input_ids[:, :, 0] != self.config.pad_token_id).to(input_ids.dtype)
             # Infer and collect segment positional embeddings
             seg_positions = torch.arange(1, self.max_segments + 1).to(input_ids.device) * seg_mask
             # Add segment positional embeddings to segment inputs
             encoder_outputs += self.seg_pos_embeddings(seg_positions)
 
-            # Encode segments with segment-wise transformer
-            seg_encoder_outputs = self.segment_encoder(encoder_outputs)
+            # Encode segments with segment-wise transformer (mask fake segments)
+            seg_encoder_outputs = self.segment_encoder(encoder_outputs,
+                                                       mask=seg_mask.to(encoder_outputs.dtype))
 
             # Collect document representation
             seg_encoder_outputs, _ = torch.max(seg_encoder_outputs, 1)
