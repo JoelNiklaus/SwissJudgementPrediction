@@ -12,5 +12,3 @@ def get_sentencizer(lang):
         raise ValueError(f"The language {lang} is not supported.")
     nlp.add_pipe("sentencizer")
     return nlp
-
-
