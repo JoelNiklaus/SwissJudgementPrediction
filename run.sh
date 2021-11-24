@@ -59,7 +59,7 @@ MAX_SAMPLES=100
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
 LR=3e-5                             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
-NUM_EPOCHS=20                       # high enough to be save, we use EarlyStopping anyway
+NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway
 LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
 SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
 OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
@@ -109,7 +109,7 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # French: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-fr-wiki_pfeiffer/
 # German: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-de-wiki_pfeiffer/, https://adapterhub.ml/adapters/ukp/xlm-roberta-base-de-wiki_pfeiffer/
 # IMPORTANT: so far, there is no xlm-roberta-base adapter for French and no bert-base-multilingual-cased adapter for Italian
-[ "$LANGUAGE" != "$TRAIN_LANGUAGE" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="False"
+[ "$LANGUAGE" != "$TRAIN_LANGUAGE" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="None"
 LANG_ADAPTER_CONFIG=pfeiffer
 [ "$LANGUAGE" == "it" ] && LANG_ADAPTER_NON_LINEARITY="relu" || LANG_ADAPTER_NON_LINEARITY="gelu"
 LANG_ADAPTER_REDUCTION_FACTOR=2
@@ -145,8 +145,9 @@ CMD="python run_tc.py
   --max_seg_len $MAX_SEG_LEN
   --num_train_epochs $NUM_EPOCHS
   --load_best_model_at_end
-  --metric_for_best_model eval_loss
-  --save_total_limit 3
+  --metric_for_best_model eval_f1_macro
+  --early_stopping_patience 1
+  --save_total_limit 5
   --report_to $REPORT
   --overwrite_output_dir True
   --overwrite_cache $OVERWRITE_CACHE

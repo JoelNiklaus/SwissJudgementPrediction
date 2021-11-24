@@ -88,6 +88,13 @@ class ModelArguments:
                     "https://www.csie.ntu.edu.tw/~cjlin/papers/threshold.pdf"
         },
     )
+    early_stopping_patience: int = field(
+        default=1,
+        metadata={
+            "help": "Use with metric_for_best_model to stop training when the specified metric worsens "
+                    "for early_stopping_patience evaluation calls."
+        },
+    )
     use_fast_tokenizer: bool = field(
         default=True,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},

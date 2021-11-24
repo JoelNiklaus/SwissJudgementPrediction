@@ -6,7 +6,7 @@ import pandas as pd
 # TODO try using data augmentation: https://arxiv.org/abs/2105.03075
 
 # TODO work with hierarchical model
-# TODO experiment with different splitting techniques (block, sentence, paragraph)
+# TODO experiment with different splitting techniques (block, sentence, paragraph) ==> I read in some paper (pretrained transformers for text ranking) that there are no big differences
 # TODO use xlm_roberta for all tasks
 # TODO train on all languages, evaluate on each language
 # TODO train on other languages, evaluate on third language ==> zero shot

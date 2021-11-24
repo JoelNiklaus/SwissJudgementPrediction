@@ -451,7 +451,8 @@ def main():
 
     def append_zero_segments(case_encodings, pad_token_id):
         """appends a list of zero segments to the encodings to make up for missing segments"""
-        return case_encodings + [[pad_token_id] * data_args.max_seg_len] * (data_args.max_segments - len(case_encodings))
+        return case_encodings + [[pad_token_id] * data_args.max_seg_len] * (
+                    data_args.max_segments - len(case_encodings))
 
     def preprocess_dataset(dataset):
         return dataset.map(
@@ -619,7 +620,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=3), CheckpointCallback()],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=model_args.early_stopping_patience), CheckpointCallback()],
     )
 
     # Hyperparameter Tuning
