@@ -10,129 +10,99 @@ Run this script from the root folder like this: python -m data_augmentation.tran
     - https://huggingface.co/Helsinki-NLP/opus-mt-it-fr
     - https://huggingface.co/Helsinki-NLP/opus-mt-fr-de
     - https://huggingface.co/Helsinki-NLP/opus-tatoeba-fr-it
+(d) - use easynmnt
 """
+from root import ROOT_DIR
 from pathlib import Path
 from shutil import copyfile
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
-from transformers import pipeline
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
-from root import ROOT_DIR
-from utils.sentencizer import get_sentencizer
+from easynmt import EasyNMT
 
 data_dir = ROOT_DIR / 'data'
 augmented_path = data_dir / 'augmented'
 translated_path = augmented_path / 'translated'
 back_translated_path = augmented_path / 'back_translated'
 languages = ['de', 'fr', 'it']
+model = EasyNMT('m2m_100_418M')  # RTX 3090 is not big enough for m2m_100_1.2B. opus-mt does not support fr-it and it-he
+
+
+# IMPORTANT: Use separate conda env (data_aug), because it installs transformers library (which messes with the adapter-transformers library!)
+
 
 # TODO check if the translations make sense
-# TODO translate by paragraph, otherwise there seems to be a problem (too many characters)
-sentencizers = {lang: get_sentencizer(lang) for lang in languages}
 
 
-def sentencize(lang, texts):
-    sents_list = []
-    nlp = sentencizers[lang]
-    for doc in nlp.pipe(texts, n_process=4, batch_size=len(texts)):
-        sents_list.append([sent.text for sent in doc.sents])
-    return sents_list
+def translate_texts(source_lang, target_lang, texts):
+    translated_texts_list = []
+    for text in tqdm(texts):
+        translated = model.translate(text, source_lang=source_lang, target_lang=target_lang)
+        translated_texts_list.append(translated)
+    return translated_texts_list
 
 
-def setup_translator(source_lang, dest_lang):
-    model_name = f"Helsinki-NLP/opus-mt-{source_lang}-{dest_lang}"
-    if (source_lang == 'fr' and dest_lang == 'it') or (source_lang == 'it' and dest_lang == 'he'):
-        model_name = f"Helsinki-NLP/opus-tatoeba-{source_lang}-{dest_lang}"
-    return pipeline('translation', model=model_name, device=0)
-
-
-def run_translator(translator, texts):
-    # Make sure, not to pass in inputs longer than 512 tokens / approx. 400 words
-    translated = [text['translation_text'] for text in translator(texts)]
-    return translated
-
-
-def translate(source_langs, dest_lang, debug=False) -> None:
-    dest_path = translated_path / dest_lang
-    dest_path.mkdir(parents=True, exist_ok=True)
-    copyfile(f'{data_dir}/{dest_lang}/labels.json', f'{dest_path}/labels.json')  # copy labels.json file
+def translate(source_langs, target_lang, debug=False) -> None:
+    target_path = translated_path / target_lang
+    target_path.mkdir(parents=True, exist_ok=True)
+    copyfile(f'{data_dir}/{target_lang}/labels.json', f'{target_path}/labels.json')  # copy labels.json file
 
     for lang in source_langs:
         file_path = f'{data_dir}/{lang}/train.csv'
-        dest_file_path = dest_path / f'train_{lang}.csv'
-        if Path(dest_file_path).exists():
-            print(f"Already processed {dest_file_path}. Skipping...")
+        target_file_path = target_path / f'train_{lang}.csv'
+        if Path(target_file_path).exists():
+            print(f"Already processed {target_file_path}. Skipping...")
             continue
         print(f"Reading data from {file_path}")
         df = pd.read_csv(file_path, nrows=2 if debug else None)
-        texts = df.text.tolist()
 
-        sents_list = sentencize(lang, texts)
+        # translate into target language
+        print(f"Translating {lang} into {target_lang}")
 
-        # translate into destination language
-        print(f"Translating {lang} into {dest_lang}")
-        translated_sents_list = []
-        translator = setup_translator(lang, dest_lang)
-        for sents in tqdm(sents_list):
-            translated_sents_list.append(run_translator(translator, sents))
-
-        df.text = [" ".join(sents) for sents in translated_sents_list]
+        df.text = translate_texts(lang, target_lang, df.text.tolist())
         df['source_language'] = lang
 
-        df.to_csv(dest_file_path)
+        print(f"Saving data to {target_file_path}")
+        df.to_csv(target_file_path)
 
 
-def back_translate(source_lang, dest_langs, debug=False) -> None:
+def back_translate(source_lang, target_langs, debug=False) -> None:
     # https://huggingface.co/blog/how-to-generate We could also play with different temperatures, etc.
-    dest_path = back_translated_path / source_lang
-    dest_path.mkdir(parents=True, exist_ok=True)
-    copyfile(f'{data_dir}/{source_lang}/labels.json', f'{dest_path}/labels.json')  # copy labels.json file
+    target_path = back_translated_path / source_lang
+    target_path.mkdir(parents=True, exist_ok=True)
+    copyfile(f'{data_dir}/{source_lang}/labels.json', f'{target_path}/labels.json')  # copy labels.json file
 
-    for lang in dest_langs:
+    for lang in target_langs:
         file_path = f'{data_dir}/{source_lang}/train.csv'
-        dest_file_path = dest_path / f'train_{lang}.csv'
-        if Path(dest_file_path).exists():
-            print(f"Already processed {dest_file_path}. Skipping...")
+        target_file_path = target_path / f'train_{lang}.csv'
+        if Path(target_file_path).exists():
+            print(f"Already processed {target_file_path}. Skipping...")
             continue
         print(f"Reading data from {file_path}")
         df = pd.read_csv(file_path, nrows=2 if debug else None)
-        texts = df.text.tolist()
-        sents_list = sentencize(source_lang, texts)
 
-        # translate into destination language
+        # translate into target language
         print(f"Translating {source_lang} into {lang}")
-        translated_sents_list = []
-        translator = setup_translator(source_lang, lang)
-        for sents in tqdm(sents_list):
-            translated_sents_list.append(run_translator(translator, sents))
-
+        translated_texts = translate_texts(source_lang, lang, df.text.tolist())
 
         # translate back into source language
         print(f"Translating {lang} back into {source_lang}")
-        back_translated_sents_list = []
-        back_translator = setup_translator(lang, source_lang)
-        for sents in tqdm(translated_sents_list):
-            back_translated_sents_list.append(run_translator(back_translator, sents))  #
-        print(back_translated_sents_list)
-
-        df.text = [" ".join(sents) for sents in back_translated_sents_list]
+        df.text = translate_texts(lang, source_lang, translated_texts)
         df['destination_language'] = lang
 
-        df.to_csv(dest_file_path)
+        print(f"Saving data to {target_file_path}")
+        df.to_csv(target_file_path)
 
 
 if __name__ == '__main__':
     debug = False
 
     source_langs = ['de', 'fr']
-    dest_lang = 'it'
-    source_langs = ['it']
-    dest_lang = 'de'
-    translate(source_langs, dest_lang, debug=debug)
+    target_lang = 'it'
+    translate(source_langs, target_lang, debug=debug)
 
+    # TODO find reason for a number of languages
     source_lang = 'it'
-    dest_langs_short = ['de', 'fr', 'es', 'en', ]
-    dest_langs_long = ['de', 'fr', 'es', 'en', 'he', 'ar', 'bg', 'ca', 'eo', 'is', 'lt', 'ms', 'uk', 'vi', ]
-    back_translate(source_lang, dest_langs_long, debug=debug)
+    target_langs_basic = ['de', 'fr', 'es', 'en', ]
+    opus_mt_langs = ['de', 'fr', 'es', 'en', 'he', 'ar', 'bg', 'ca', 'eo', 'is', 'lt', 'ms', 'uk', 'vi', ] # supported by opus-mt
+    m2m_100_langs = ['af', 'am', 'ar', 'ast', 'az', 'ba', 'be', 'bg', 'bn', 'br', 'bs', 'ca', 'ceb', 'cs', 'cy', 'da', 'de', 'el', 'en', 'es', 'et', 'fa', 'ff', 'fi', 'fr', 'fy', 'ga', 'gd', 'gl', 'gu', 'ha', 'he', 'hi', 'hr', 'ht', 'hu', 'hy', 'id', 'ig', 'ilo', 'is', 'it', 'ja', 'jv', 'ka', 'kk', 'km', 'kn', 'ko', 'lb', 'lg', 'ln', 'lo', 'lt', 'lv', 'mg', 'mk', 'ml', 'mn', 'mr', 'ms', 'my', 'ne', 'nl', 'no', 'ns', 'oc', 'or', 'pa', 'pl', 'ps', 'pt', 'ro', 'ru', 'sd', 'si', 'sk', 'sl', 'so', 'sq', 'sr', 'ss', 'su', 'sv', 'sw', 'ta', 'th', 'tl', 'tn', 'tr', 'uk', 'ur', 'uz', 'vi', 'wo', 'xh', 'yi', 'yo', 'zh', 'zu'] # supported by m2m_100
+    back_translate(source_lang, target_langs_basic, debug=debug)
