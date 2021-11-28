@@ -15,8 +15,11 @@
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt
 
-# Put your code below this line
+# Activate correct conda environment
+eval "$(conda shell.bash hook)"
+conda activate sjp
 
+# Put your code below this line
 #           $1: train_type, $2: train_mode, $3: model_name, $4: model_type, $5: train_language, $6: language, $7: sub_datasets
 bash run.sh --train_type=$1 --train_mode=$2 --model_name=$3 --model_type=$4 --train_language=$5 --language=$6 --sub_datasets=$7 \
   --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out

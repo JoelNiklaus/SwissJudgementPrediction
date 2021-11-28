@@ -110,9 +110,12 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # German: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-de-wiki_pfeiffer/, https://adapterhub.ml/adapters/ukp/xlm-roberta-base-de-wiki_pfeiffer/
 # IMPORTANT: so far, there is no xlm-roberta-base adapter for French and no bert-base-multilingual-cased adapter for Italian
 [ "$LANGUAGE" != "$TRAIN_LANGUAGE" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="None"
+# LOAD_LANG_ADAPTER="None" # Use this to disable loading of language adapters in all cases
 LANG_ADAPTER_CONFIG=pfeiffer
 [ "$LANGUAGE" == "it" ] && LANG_ADAPTER_NON_LINEARITY="relu" || LANG_ADAPTER_NON_LINEARITY="gelu"
 LANG_ADAPTER_REDUCTION_FACTOR=2
+
+# TODO make adapter experiments without loading lang adapter
 
 CMD="python run_tc.py
   --problem_type single_label_classification

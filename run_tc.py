@@ -452,7 +452,7 @@ def main():
     def append_zero_segments(case_encodings, pad_token_id):
         """appends a list of zero segments to the encodings to make up for missing segments"""
         return case_encodings + [[pad_token_id] * data_args.max_seg_len] * (
-                    data_args.max_segments - len(case_encodings))
+                data_args.max_segments - len(case_encodings))
 
     def preprocess_dataset(dataset):
         return dataset.map(
@@ -620,7 +620,8 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=model_args.early_stopping_patience), CheckpointCallback()],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=model_args.early_stopping_patience),
+                   CheckpointCallback()],
     )
 
     # Hyperparameter Tuning
@@ -668,8 +669,7 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
-    # TODO fix this again!
-    # wandb.config.update(experiment_params)  # update config to save all the parameters
+    wandb.config.update(experiment_params)  # update config to save all the parameters
 
     def remove_metrics(metrics, split):
         # remove unnecessary values to make overview nicer in wandb
@@ -736,12 +736,12 @@ def main():
             pd.DataFrame.from_dict(confidences, orient='index').to_csv(f'{base_dir}/confidences.csv')
 
             if "wandb" in training_args.report_to:
-                wandb.log({
+                wandb.log(OrderedDict({
                     f"{wandb_prefix}correct_mean": confidences['correct']['mean'],
                     f"{wandb_prefix}correct_std": confidences['correct']['std'],
                     f"{wandb_prefix}incorrect_mean": confidences['incorrect']['mean'],
                     f"{wandb_prefix}incorrect_std": confidences['incorrect']['std'],
-                })
+                }))
 
             # write report file
             with open(f'{base_dir}/prediction_report.txt', "w") as writer:
@@ -791,7 +791,7 @@ def main():
         logger.info("*** Special Splits ***")
         for experiment, parts in sub_datasets.items():
             for part, dataset in parts.items():
-                if len(dataset) >= 1:  # we need at least one example
+                if len(dataset) >= 50:  # below a minimum number the results are too noisy
                     base_dir = Path(training_args.output_dir) / experiment / part
                     base_dir.mkdir(parents=True, exist_ok=True)
                     preds, labels, probs, metrics = predict(dataset)
