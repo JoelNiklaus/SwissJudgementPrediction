@@ -392,6 +392,7 @@ def main():
         sentencizers = {lang: get_sentencizer(lang) for lang in languages}
 
     def preprocess_function(batch):
+        pad_id = tokenizer.pad_token_id
         if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
             batch['segments'] = []
             if data_args.segmentation_type == SegmentationType.BLOCK:
@@ -400,7 +401,10 @@ def main():
                                       add_special_tokens=False)  # prevent it from adding the cls and sep tokens twice
                 for ids in tokenized['input_ids']:
                     # convert ids to tokens and then back to strings
-                    id_blocks = [ids[i:i + data_args.max_seg_len] for i in range(0, len(ids), data_args.max_seg_len)]
+                    id_blocks = [ids[i:i + data_args.max_seg_len] for i in range(0, len(ids), data_args.max_seg_len) if
+                                 ids[i] != pad_id]  # remove blocks containing only ids
+                    id_blocks[-1] = [id for id in id_blocks[-1] if
+                                     id != pad_id]  # remove remaining pad_tokens_ids from the last block
                     token_blocks = [tokenizer.convert_ids_to_tokens(ids) for ids in id_blocks]
                     string_blocks = [tokenizer.convert_tokens_to_string(tokens) for tokens in token_blocks]
                     batch['segments'].append(string_blocks)
@@ -431,10 +435,9 @@ def main():
             for case in batch['segments']:
                 case_encodings = tokenizer(case[:data_args.max_segments], padding=padding, truncation=True,
                                            max_length=data_args.max_seg_len, return_token_type_ids=True)
-                pad_token_id = tokenizer.pad_token_id
-                tokenized['input_ids'].append(append_zero_segments(case_encodings['input_ids'], pad_token_id))
-                tokenized['attention_mask'].append(append_zero_segments(case_encodings['attention_mask'], pad_token_id))
-                tokenized['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids'], pad_token_id))
+                tokenized['input_ids'].append(append_zero_segments(case_encodings['input_ids'], pad_id))
+                tokenized['attention_mask'].append(append_zero_segments(case_encodings['attention_mask'], 0))
+                tokenized['token_type_ids'].append(append_zero_segments(case_encodings['token_type_ids'], 0))
             del batch['segments']
         else:
             # Tokenize the texts
