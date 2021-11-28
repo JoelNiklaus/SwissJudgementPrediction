@@ -1,3 +1,6 @@
+print("Initializing Sentencizers")
+
+
 def get_sentencizer(lang):
     if lang == 'de':
         from spacy.lang.de import German

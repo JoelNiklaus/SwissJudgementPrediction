@@ -13,6 +13,8 @@ import pandas as pd
 # TODO ECTHR violation ==> approval, non-violation ==> dismissal, binarize SCOTUS as well, compare with just further pretraining on this data
 # TODO translate all cases to one language and evaluate on that language with native model
 # TODO use paraphrases/backtranslation as data augmentation
+# TODO further pretrain on all decisions
+# TODO further pretrain on augmented decisions too
 
 # TODO try counterfactual data augmentation to improve performance
 # TODO think about including more metadata into dataset (like party information, judge information, citations, etc.)
