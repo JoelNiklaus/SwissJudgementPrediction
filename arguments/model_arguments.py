@@ -91,8 +91,15 @@ class ModelArguments:
     early_stopping_patience: int = field(
         default=1,
         metadata={
-            "help": "Use with metric_for_best_model to stop training when the specified metric worsens "
-                    "for early_stopping_patience evaluation calls."
+            "help": "Use with :obj:`metric_for_best_model` to stop training when the specified metric worsens "
+                    "for :obj:`early_stopping_patience` evaluation calls."
+        },
+    )
+    early_stopping_threshold: float = field(
+        default=0.00,
+        metadata={
+            "help": "Use with TrainingArguments :obj:`metric_for_best_model` and :obj:`early_stopping_patience` "
+                    "to denote how much the specified metric must improve to satisfy early stopping conditions. "
         },
     )
     use_fast_tokenizer: bool = field(

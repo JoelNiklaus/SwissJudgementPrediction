@@ -58,11 +58,14 @@ MAX_SAMPLES=100
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
 TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
-LR=3e-5                             # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}
-NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway
+NUM_EPOCHS=10                       # high enough to be save, we use EarlyStopping anyway
 LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
 SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
 OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
+
+# Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}, https://openreview.net/pdf?id=nzpLWnVAyah: RoBERTa apparently has a lot of instability with lr 3e-5
+[ "$TRAIN_TYPE" == "finetune" ] && LR=1e-5 || LR=5e-4 # higher lr for adapters and bitfit
+# ==> Report
 
 # Batch size for RTX 3090 for
 # Distilbert: 32
@@ -149,7 +152,7 @@ CMD="python run_tc.py
   --num_train_epochs $NUM_EPOCHS
   --load_best_model_at_end
   --metric_for_best_model eval_f1_macro
-  --early_stopping_patience 1
+  --early_stopping_patience 2
   --save_total_limit 5
   --report_to $REPORT
   --overwrite_output_dir True

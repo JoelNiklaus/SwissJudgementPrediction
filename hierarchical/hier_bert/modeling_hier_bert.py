@@ -138,8 +138,10 @@ class HierBertForSequenceClassification(ModelWithHeadsAdaptersMixin, BertPreTrai
             # Infer real segments, i.e., mask paddings (like attention_mask but on a segment level)
             # seg_mask = (torch.sum(input_ids, 2) != self.config.pad_token_id).to(input_ids.dtype)
             seg_mask = (input_ids[:, :, 0] != self.config.pad_token_id).to(input_ids.dtype)
+
             # Infer and collect segment positional embeddings
             seg_positions = torch.arange(1, self.max_segments + 1).to(input_ids.device) * seg_mask
+
             # Add segment positional embeddings to segment inputs
             encoder_outputs += self.seg_pos_embeddings(seg_positions)
 

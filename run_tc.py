@@ -59,7 +59,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     default_data_collator,
-    set_seed, TrainerCallback,
+    set_seed, TrainerCallback, XLMRobertaTokenizer,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
@@ -247,7 +247,10 @@ def main():
         max_segment_length=data_args.max_seg_len,
         segment_encoder_type="transformer",
     )
-    tokenizer = AutoTokenizer.from_pretrained(
+    tokenizer_class = AutoTokenizer
+    if model_args.model_name_or_path == 'microsoft/Multilingual-MiniLM-L12-H384':
+        tokenizer_class = XLMRobertaTokenizer
+    tokenizer = tokenizer_class.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         do_lower_case=model_args.do_lower_case,
         cache_dir=model_args.cache_dir,
@@ -603,6 +606,16 @@ def main():
         if model_args.train_type == TrainType.ADAPTERS:
             model.save_adapter(folder, data_args.task_name)
 
+    def load_model(model, folder):
+        # load entire model ourselves just to be safe
+        model.load_state_dict(torch.load(f'{folder}/model.bin', map_location=training_args.device))
+        logger.info(f"Model state dict loaded from {folder}/model.bin")
+        model.to(training_args.device)
+
+        # load adapters
+        if model_args.train_type == TrainType.ADAPTERS:
+            model.load_adapter(folder, load_as=data_args.task_name)
+
     class CheckpointCallback(TrainerCallback):
         def on_save(self, args, state, control, model=None, **kwargs):
             if args.save_strategy == "epoch":
@@ -614,6 +627,8 @@ def main():
             save_model(model, f"{args.output_dir}/checkpoint-{checkpoint_number}")
 
     # Initialize our Trainer
+    early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=model_args.early_stopping_patience,
+                                                    early_stopping_threshold=model_args.early_stopping_threshold)
     trainer = trainer_class(
         model=model_init() if not data_args.tune_hyperparams else None,
         model_init=model_init if data_args.tune_hyperparams else None,
@@ -623,8 +638,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=model_args.early_stopping_patience),
-                   CheckpointCallback()],
+        callbacks=[early_stopping_callback, CheckpointCallback()],
     )
 
     # Hyperparameter Tuning
@@ -672,7 +686,9 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
-    wandb.config.update(experiment_params)  # update config to save all the parameters
+    if training_args.do_train:
+        wandb.config.update(
+            experiment_params)  # update config to save all the parameters, may not work in interactive setting
 
     def remove_metrics(metrics, split):
         # remove unnecessary values to make overview nicer in wandb
@@ -680,6 +696,9 @@ def main():
         metrics.pop(f"{split}_runtime")
         metrics.pop(f"{split}_steps_per_second")
         metrics.pop(f"{split}_samples_per_second")
+
+    # load model ourselves because save_pretrained/load_pretrained might not work well for our hacked models
+    # load_model(trainer.model, training_args.output_dir)
 
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
