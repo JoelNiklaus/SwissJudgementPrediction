@@ -57,15 +57,14 @@ MAX_SAMPLES=100
 [ "$DEBUG" == "True" ] && FP16="False" || FP16="True"      # disable fp16 in debug mode because it might run on cpu
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
-TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
-NUM_EPOCHS=10                       # high enough to be save, we use EarlyStopping anyway
-LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
-SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
-OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
+TOTAL_BATCH_SIZE=64                                 # we made the best experiences with this (32 and below sometimes did not train well)
+NUM_EPOCHS=10                                       # high enough to be save, we use EarlyStopping anyway
+LABEL_IMBALANCE_METHOD=oversampling                 # this achieved the best results in our experiments
+SEG_TYPE=block                                      # one of sentence, paragraph, block, overlapping
+OVERWRITE_CACHE=True                                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
 
 # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}, https://openreview.net/pdf?id=nzpLWnVAyah: RoBERTa apparently has a lot of instability with lr 3e-5
-[ "$TRAIN_TYPE" == "finetune" ] && LR=1e-5 || LR=5e-4 # higher lr for adapters and bitfit
-# ==> Report
+[ "$TRAIN_TYPE" == "bitfit" ] && LR=5e-4 || LR=1e-5 # lower lr for adapters and finetune
 
 # Batch size for RTX 3090 for
 # Distilbert: 32
@@ -112,6 +111,8 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # French: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-fr-wiki_pfeiffer/
 # German: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-de-wiki_pfeiffer/, https://adapterhub.ml/adapters/ukp/xlm-roberta-base-de-wiki_pfeiffer/
 # IMPORTANT: so far, there is no xlm-roberta-base adapter for French and no bert-base-multilingual-cased adapter for Italian
+ADAPTER_CONFIG="houlsby"   # 'houlsby' or 'pfeiffer'
+ADAPTER_REDUCTION_FACTOR=4 # default 16
 [ "$LANGUAGE" != "$TRAIN_LANGUAGE" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="None"
 # LOAD_LANG_ADAPTER="None" # Use this to disable loading of language adapters in all cases
 LANG_ADAPTER_CONFIG=pfeiffer
@@ -160,6 +161,8 @@ CMD="python run_tc.py
   --test_on_sub_datasets $SUB_DATASETS
   --train_type $TRAIN_TYPE
   --train_adapter True
+  --adapter_config $ADAPTER_CONFIG
+  --adapter_reduction_factor $ADAPTER_REDUCTION_FACTOR
   --load_lang_adapter $LOAD_LANG_ADAPTER
   --lang_adapter_config $LANG_ADAPTER_CONFIG
   --lang_adapter_non_linearity $LANG_ADAPTER_NON_LINEARITY

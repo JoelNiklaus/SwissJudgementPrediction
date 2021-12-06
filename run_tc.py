@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 """
-Finetuning/Adapting multi-lingual models on SJP (e.g. Bert, DistilBERT, XLM).
+Finetuning/Adapting multi-lingual models on SJP (e.g. Bert, RoBERTa DistilBERT, XLM).
 Adapted from `examples/text-classification/run_glue.py`
 """
 import faulthandler
@@ -39,7 +39,6 @@ from sklearn.utils import compute_class_weight
 import torch
 from sklearn.utils.extmath import softmax
 from torch.cuda.amp import autocast
-from torch import nn
 from torch.nn import CrossEntropyLoss
 
 from datasets import load_dataset, concatenate_datasets
@@ -64,6 +63,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
+from utils.custom_callbacks import CustomWandbCallback
 from long import LongBert
 from arguments.data_arguments import DataArguments, ProblemType, SegmentationType
 from hierarchical.hier_bert.configuration_hier_bert import HierBertConfig
@@ -78,6 +78,7 @@ from arguments.model_arguments import ModelArguments, LabelImbalanceMethod, Long
 from utils.sentencizer import get_sentencizer
 
 os.environ['WANDB_MODE'] = "online"
+os.environ['WANDB_WATCH'] = "false"  # disable gradient logging
 # os.environ['WANDB_NOTES'] = "Enter notes here"
 os.environ['TOKENIZERS_PARALLELISM'] = "True"
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # use this when debugging
@@ -638,7 +639,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        callbacks=[early_stopping_callback, CheckpointCallback()],
+        callbacks=[early_stopping_callback, CheckpointCallback(), CustomWandbCallback(experiment_params)],
     )
 
     # Hyperparameter Tuning
@@ -685,10 +686,6 @@ def main():
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
-
-    if training_args.do_train:
-        wandb.config.update(
-            experiment_params)  # update config to save all the parameters, may not work in interactive setting
 
     def remove_metrics(metrics, split):
         # remove unnecessary values to make overview nicer in wandb
