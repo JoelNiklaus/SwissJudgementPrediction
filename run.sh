@@ -14,11 +14,11 @@ while [ $# -gt 0 ]; do
   --model_type=*)
     MODEL_TYPE="${1#*=}" # one of 'standard', 'long', 'hierarchical', 'efficient'
     ;;
-  --train_language=*)
-    TRAIN_LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
+  --train_languages=*)
+    TRAIN_LANGUAGES="${1#*=}" # comma separated list of 'de', 'fr', 'it', 'en' (example: de,fr NO SPACE!)
     ;;
-  --language=*)
-    LANGUAGE="${1#*=}" # one of 'de', 'fr', 'it', 'all'
+  --test_languages=*)
+    TEST_LANGUAGES="${1#*=}" # one of 'de', 'fr', 'it'
     ;;
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
@@ -43,8 +43,8 @@ printf "Argument TRAIN_TYPE is \t\t\t %s\n" "$TRAIN_TYPE"
 printf "Argument TRAIN_MODE is \t\t\t %s\n" "$TRAIN_MODE"
 printf "Argument MODEL_NAME is \t\t\t %s\n" "$MODEL_NAME"
 printf "Argument MODEL_TYPE is \t\t\t %s\n" "$MODEL_TYPE"
-printf "Argument TRAIN_LANGUAGE is \t\t %s\n" "$TRAIN_LANGUAGE"
-printf "Argument LANGUAGE is \t\t\t %s\n" "$LANGUAGE"
+printf "Argument TRAIN_LANGUAGES is \t\t %s\n" "$TRAIN_LANGUAGES"
+printf "Argument TEST_LANGUAGES is \t\t %s\n" "$TEST_LANGUAGES"
 printf "Argument SUB_DATASETS is \t\t %s\n" "$SUB_DATASETS"
 printf "Argument SEED is \t\t\t %s\n" "$SEED"
 printf "Argument DEBUG is \t\t\t %s\n" "$DEBUG"
@@ -63,6 +63,10 @@ LABEL_IMBALANCE_METHOD=oversampling                 # this achieved the best res
 SEG_TYPE=block                                      # one of sentence, paragraph, block, overlapping
 OVERWRITE_CACHE=True                                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
 
+# label smoothing cannot be used with a custom loss function
+# TODO test if this improves results
+[ "$LABEL_IMBALANCE_METHOD" == "class_weights" ] && LABEL_SMOOTHING_FACTOR=0.0 || LABEL_SMOOTHING_FACTOR=0.1
+
 # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}, https://openreview.net/pdf?id=nzpLWnVAyah: RoBERTa apparently has a lot of instability with lr 3e-5
 [ "$TRAIN_TYPE" == "bitfit" ] && LR=5e-4 || LR=1e-5 # lower lr for adapters and finetune
 
@@ -70,9 +74,8 @@ OVERWRITE_CACHE=True                                # IMPORTANT: Make sure to se
 # Distilbert: 32
 # BERT-base: 16
 # BERT-large: 8
-# HierBERT/Longformer (input size 4096) Distilbert: 8?
-# HierBERT/Longformer (input size 2048) BERT-base: 4
-# HierBERT/Longformer (input size 1024) BERT-base: 8
+# HierBERT (input size 2048) BERT-base: 4
+# HierBERT (input size 1024) BERT-base: 8
 # LongBERT (input size 2048) BERT-base: 2
 # LongBERT (input size 1024) BERT-base: 4
 # LongBERT (input size 2048) XLM-RoBERTa-base: 1
@@ -94,8 +97,8 @@ fi
 
 # Compute variables based on settings above
 MODEL=$MODEL_NAME-$MODEL_TYPE
-DIR=$BASE_DIR/$TRAIN_TYPE/$TRAIN_MODE/$MODEL/$TRAIN_LANGUAGE
-DIR=$DIR/$SEED
+RUN_DIR=$TRAIN_TYPE/$MODEL/$TRAIN_LANGUAGES/$SEED
+OUTPUT_DIR=$BASE_DIR/$RUN_DIR
 ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a sufficiently high total batch size
 # how many tokens to consider as input (hierarchical/long: 2048 is enough for facts)
 [ "$MODEL_TYPE" == "standard" ] && MAX_SEQ_LEN=512 || MAX_SEQ_LEN=2048
@@ -104,7 +107,7 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # disable training if we are not in train mode
 [ "$TRAIN_MODE" == "train" ] && TRAIN="True" || TRAIN="False"
 # Set this to a path to start from a saved checkpoint and to an empty string otherwise
-[ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$TRAIN_TYPE/train/$MODEL/$TRAIN_LANGUAGE/$SEED"
+[ "$TRAIN_MODE" == "train" ] && MODEL_PATH="$MODEL_NAME" || MODEL_PATH="sjp/$RUN_DIR"
 
 # Adapter Configs
 # Italian: https://adapterhub.ml/adapters/ukp/xlm-roberta-base-it-wiki_pfeiffer/
@@ -113,24 +116,25 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # IMPORTANT: so far, there is no xlm-roberta-base adapter for French and no bert-base-multilingual-cased adapter for Italian
 ADAPTER_CONFIG="houlsby"   # 'houlsby' or 'pfeiffer'
 ADAPTER_REDUCTION_FACTOR=4 # default 16
-[ "$LANGUAGE" != "$TRAIN_LANGUAGE" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="None"
-# LOAD_LANG_ADAPTER="None" # Use this to disable loading of language adapters in all cases
-LANG_ADAPTER_CONFIG=pfeiffer
-[ "$LANGUAGE" == "it" ] && LANG_ADAPTER_NON_LINEARITY="relu" || LANG_ADAPTER_NON_LINEARITY="gelu"
-LANG_ADAPTER_REDUCTION_FACTOR=2
 
-# TODO make adapter experiments without loading lang adapter
+# For now disable lang adapters because it is too complicated and they are not available for all languages
+#[ "$TEST_LANGUAGES" != "$TRAIN_LANGUAGES" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="None"
+#LOAD_LANG_ADAPTER="False" # Use this to disable loading of language adapters in all cases
+#LANG_ADAPTER_CONFIG="pfeiffer"
+#[ "$LANGUAGE" == "it" ] && LANG_ADAPTER_NON_LINEARITY="relu" || LANG_ADAPTER_NON_LINEARITY="gelu"
+#LANG_ADAPTER_REDUCTION_FACTOR=2
 
 CMD="python run_tc.py
   --problem_type single_label_classification
   --model_name $MODEL_NAME
   --model_name_or_path $MODEL_PATH
-  --run_name $TRAIN_TYPE-$TRAIN_MODE-$MODEL-$TRAIN_LANGUAGE-$LANGUAGE-$SEED
-  --output_dir $DIR
+  --run_name $TRAIN_TYPE-$MODEL-$TRAIN_LANGUAGES-$TEST_LANGUAGES-$SEED
+  --output_dir $OUTPUT_DIR
   --long_input_bert_type $MODEL_TYPE
   --learning_rate $LR
   --seed $SEED
-  --evaluation_language $LANGUAGE
+  --train_languages $TRAIN_LANGUAGES
+  --test_languages $TEST_LANGUAGES
   --do_train $TRAIN
   --do_eval
   --do_predict
@@ -141,6 +145,7 @@ CMD="python run_tc.py
   --logging_strategy steps
   --evaluation_strategy epoch
   --save_strategy epoch
+  --label_smoothing_factor $LABEL_SMOOTHING_FACTOR
   --label_imbalance_method $LABEL_IMBALANCE_METHOD
   --gradient_accumulation_steps $ACCUMULATION_STEPS
   --eval_accumulation_steps $ACCUMULATION_STEPS
@@ -163,16 +168,13 @@ CMD="python run_tc.py
   --train_adapter True
   --adapter_config $ADAPTER_CONFIG
   --adapter_reduction_factor $ADAPTER_REDUCTION_FACTOR
-  --load_lang_adapter $LOAD_LANG_ADAPTER
-  --lang_adapter_config $LANG_ADAPTER_CONFIG
-  --lang_adapter_non_linearity $LANG_ADAPTER_NON_LINEARITY
-  --lang_adapter_reduction_factor $LANG_ADAPTER_REDUCTION_FACTOR
-  --language $LANGUAGE
   $MAX_SAMPLES_ENABLED
 "
-#  --label_smoothing_factor 0.1 \ # does not work with custom loss function
-#  --resume_from_checkpoint $DIR/checkpoint-$CHECKPOINT
-#  --metric_for_best_model eval_f1_macro # would be slightly better for imbalanced datasets
+#  --load_lang_adapter $LOAD_LANG_ADAPTER
+#  --lang_adapter_config $LANG_ADAPTER_CONFIG
+#  --lang_adapter_non_linearity $LANG_ADAPTER_NON_LINEARITY
+#  --lang_adapter_reduction_factor $LANG_ADAPTER_REDUCTION_FACTOR
+#  --language $LANGUAGE
 
 echo "
 Running the following command (this can be used to quickly run the command in the IDE for debugging):

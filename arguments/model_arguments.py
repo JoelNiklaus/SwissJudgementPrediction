@@ -43,14 +43,13 @@ class ModelArguments:
     use_pretrained_model: bool = field(
         default=True, metadata={"help": "If True uses a pretrained model."},
     )
-    evaluation_language: str = field(
+    test_languages: str = field(
         default=None, metadata={
-            "help": "Evaluation language. Also train language if `train_language` is set to None. "
-                    "Can also be set to 'all'"
+            "help": "Test languages. Also train languages if `train_languages` is set to None."
         },
     )
-    train_language: Optional[str] = field(
-        default=None, metadata={"help": "Train language if it is different from the evaluation language."},
+    train_languages: Optional[str] = field(
+        default=None, metadata={"help": "Train languages if different from the test languages."},
     )
     config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"},

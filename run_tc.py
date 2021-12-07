@@ -90,8 +90,6 @@ logger = logging.getLogger(__name__)
 
 faulthandler.enable()
 
-languages = ['de', 'fr', 'it']
-
 logger.warning("This script only supports PyTorch models!")
 
 
@@ -182,52 +180,47 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    langs = [model_args.evaluation_language]
-    if model_args.evaluation_language == 'all':
-        langs = languages
-        train_datasets = []
-        eval_datasets = []
-        predict_datasets = []
+    # transform comma separated string into list of languages
+    # NOTE multiple test_languages are not possible when using language adapters
+    model_args.train_languages = model_args.train_languages.split(",")
+    model_args.test_languages = model_args.test_languages.split(",")
 
-    assert len(langs) > 0
-    for lang in langs:
-        # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-        # download the dataset.
-        if training_args.do_train:
+    train_datasets, eval_datasets, = [], []
+    if training_args.do_train:
+        for lang in model_args.train_languages:
             train_dataset = load_dataset("csv", data_files={"train": f'data/{lang}/train.csv'})['train']
+            train_datasets.append(train_dataset)
+        train_dataset = concatenate_datasets(train_datasets)  # we want to train on all datasets at the same time
 
-        if training_args.do_eval:
+    if training_args.do_eval:
+        for lang in model_args.train_languages:
             eval_dataset = load_dataset("csv", data_files={"validation": f'data/{lang}/val.csv'})['validation']
+            eval_datasets.append(eval_dataset)
+        eval_dataset = concatenate_datasets(eval_datasets)  # we want to evaluate on all datasets at the same time
 
+    predict_datasets, sub_datasets = {}, {}
+    for lang in model_args.test_languages:
         if training_args.do_predict:
             predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
+            predict_datasets[lang] = predict_dataset
 
         if data_args.test_on_sub_datasets:
-            sub_datasets = dict()
+            lang_sub_datasets = dict()
             for file in glob.glob(f'data/{lang}/sub_datasets/*/*.csv'):
                 experiment = Path(file).parent.stem
                 part = Path(file).stem.split("-")[1]
-                if experiment not in sub_datasets:
-                    sub_datasets[experiment] = dict()
-                sub_datasets[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
+                if experiment not in lang_sub_datasets:
+                    lang_sub_datasets[experiment] = dict()
+                lang_sub_datasets[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
+            sub_datasets[lang] = lang_sub_datasets
 
-        # Labels: they will get overwritten if there are multiple languages
-        with open(f'data/{lang}/labels.json', 'r') as f:
-            label_dict = json.load(f)
-            label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
-            label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
-            label_list = list(label_dict["label2id"].keys())
-        num_labels = len(label_list)
-
-        if model_args.evaluation_language == 'all':
-            train_datasets.append(train_dataset)
-            eval_datasets.append(eval_dataset)
-            predict_datasets.append(predict_dataset)
-
-    if model_args.evaluation_language == 'all':
-        train_dataset = concatenate_datasets(train_datasets)
-        eval_dataset = concatenate_datasets(eval_datasets)
-        predict_dataset = concatenate_datasets(predict_datasets)
+    # Labels: just take the labels from the first language. We assume that they are identical anyway.
+    with open(f'data/{model_args.train_languages[0]}/labels.json', 'r') as f:
+        label_dict = json.load(f)
+        label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
+        label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
+        label_list = list(label_dict["label2id"].keys())
+    num_labels = len(label_list)
 
     if data_args.problem_type == ProblemType.MULTI_LABEL_CLASSIFICATION:
         mlb = MultiLabelBinarizer().fit([label_list])
@@ -259,6 +252,27 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+
+    def save_model(model, folder):
+        # save entire model ourselves just to be safe
+        torch.save(model.state_dict(), f'{folder}/model.bin')
+        logger.info(f"Model state dict saved to {folder}/model.bin")
+
+        # save adapters
+        if model_args.train_type == TrainType.ADAPTERS:
+            model.save_adapter(folder, data_args.task_name)
+
+    def load_model(model, folder):
+        # load entire model ourselves just to be safe
+        model_path = Path(f'{folder}/model.bin')
+        if model_path.exists():
+            model.load_state_dict(torch.load(model_path, map_location=training_args.device))
+            logger.info(f"Model state dict loaded from {model_path}")
+            model.to(training_args.device)
+
+            # load adapters
+            if model_args.train_type == TrainType.ADAPTERS:
+                model.load_adapter(folder, load_as=data_args.task_name)
 
     def model_init():
         if model_args.use_pretrained_model:
@@ -302,7 +316,6 @@ def main():
                 config_class = HierCamembertConfig
                 model_class = HierCamembertForSequenceClassification
 
-            # TODO: Make sure the model loads the segment_encoder weights
             hier_bert_config = config_class(**config.to_dict())
             model = model_class.from_pretrained(model_args.model_name_or_path, config=hier_bert_config)
 
@@ -315,10 +328,7 @@ def main():
         if model_args.long_input_bert_type in [LongInputBertType.LONG, LongInputBertType.HIERARCHICAL]:
             if last_checkpoint or not training_args.do_train:
                 # Make sure we really load all the weights after we modified the models
-                model_path = f'{model_args.model_name_or_path}/model.bin'
-                if Path(model_path).exists():
-                    logger.info(f"loading file {model_path}")
-                    model.load_state_dict(torch.load(model_path, map_location=training_args.device))
+                load_model(model, model_args.model_name_or_path)
 
         if model_args.train_type == TrainType.ADAPTERS:
             # Setup adapters
@@ -393,7 +403,7 @@ def main():
 
     # TODO do sentence splitting beforehand in the SCRC dataset creation
     if data_args.segmentation_type == SegmentationType.SENTENCE:
-        sentencizers = {lang: get_sentencizer(lang) for lang in languages}
+        sentencizers = {lang: get_sentencizer(lang) for lang in model_args.train_languages}
 
     def preprocess_function(batch):
         pad_id = tokenizer.pad_token_id
@@ -417,8 +427,8 @@ def main():
                 #  https://aclanthology.org/W19-2204.pdf, https://www.scitepress.org/Papers/2021/102463/102463.pdf
                 # For the moment just do it so we can test the new bert variant
                 sents_list = []
-                if model_args.evaluation_language != 'all':
-                    nlp = sentencizers[model_args.evaluation_language]
+                if len(model_args.train_languages) == 1:
+                    nlp = sentencizers[model_args.train_languages[0]]
                     for doc in nlp.pipe(batch['text'], batch_size=len(batch['text'])):
                         sents_list.append([sent.text for sent in doc.sents])
                 else:  # if the languages are mixed we need to load it from the case
@@ -488,14 +498,16 @@ def main():
         eval_dataset = preprocess_dataset(eval_dataset)
 
     if training_args.do_predict:
-        if data_args.max_predict_samples is not None:
-            predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
-        predict_dataset = preprocess_dataset(predict_dataset)
+        for lang in model_args.test_languages:
+            if data_args.max_predict_samples is not None:
+                predict_datasets[lang] = predict_datasets[lang].select(range(data_args.max_predict_samples))
+            predict_datasets[lang] = preprocess_dataset(predict_datasets[lang])
 
     if data_args.test_on_sub_datasets:
-        for experiment, parts in sub_datasets.items():
-            for part, dataset in parts.items():
-                sub_datasets[experiment][part] = preprocess_dataset(dataset)
+        for lang in model_args.test_languages:
+            for experiment, parts in sub_datasets[lang].items():
+                for part, dataset in parts.items():
+                    sub_datasets[lang][experiment][part] = preprocess_dataset(dataset)
 
     def labels_to_bools(labels):
         return [tl == 1 for tl in labels]
@@ -571,7 +583,8 @@ def main():
         label_datasets = dict()
         minority_len, majority_len = len(train_dataset), 0
         for label_id in label_dict['id2label'].keys():
-            label_datasets[label_id] = train_dataset.filter(lambda item: item['label'] == label_id)
+            label_datasets[label_id] = train_dataset.filter(lambda item: item['label'] == label_id,
+                                                            load_from_cache_file=not data_args.overwrite_cache)
             if len(label_datasets[label_id]) < minority_len:
                 minority_len = len(label_datasets[label_id])
                 minority_id = label_id
@@ -583,7 +596,7 @@ def main():
             logger.info("Oversampling the minority class")
             datasets = [train_dataset]
             num_full_minority_sets = int(majority_len / minority_len)
-            for i in range(num_full_minority_sets - 1):  # -1 because one is already included in the trainig dataset
+            for i in range(num_full_minority_sets - 1):  # -1 because one is already included in the training dataset
                 datasets.append(label_datasets[minority_id])
 
             remaining_minority_samples = majority_len % minority_len
@@ -598,25 +611,6 @@ def main():
             label_datasets[majority_id] = label_datasets[majority_id].select(random_ids)
             train_dataset = concatenate_datasets(list(label_datasets.values()))
 
-    def save_model(model, folder):
-        # save entire model ourselves just to be safe
-        torch.save(model.state_dict(), f'{folder}/model.bin')
-        logger.info(f"Model state dict saved to {folder}/model.bin")
-
-        # save adapters
-        if model_args.train_type == TrainType.ADAPTERS:
-            model.save_adapter(folder, data_args.task_name)
-
-    def load_model(model, folder):
-        # load entire model ourselves just to be safe
-        model.load_state_dict(torch.load(f'{folder}/model.bin', map_location=training_args.device))
-        logger.info(f"Model state dict loaded from {folder}/model.bin")
-        model.to(training_args.device)
-
-        # load adapters
-        if model_args.train_type == TrainType.ADAPTERS:
-            model.load_adapter(folder, load_as=data_args.task_name)
-
     class CheckpointCallback(TrainerCallback):
         def on_save(self, args, state, control, model=None, **kwargs):
             if args.save_strategy == "epoch":
@@ -627,9 +621,12 @@ def main():
                 return
             save_model(model, f"{args.output_dir}/checkpoint-{checkpoint_number}")
 
+    callbacks = [EarlyStoppingCallback(early_stopping_patience=model_args.early_stopping_patience,
+                                       early_stopping_threshold=model_args.early_stopping_threshold),
+                 CheckpointCallback()]
+    if "wandb" in training_args.report_to:
+        callbacks.append(CustomWandbCallback(experiment_params))
     # Initialize our Trainer
-    early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=model_args.early_stopping_patience,
-                                                    early_stopping_threshold=model_args.early_stopping_threshold)
     trainer = trainer_class(
         model=model_init() if not data_args.tune_hyperparams else None,
         model_init=model_init if data_args.tune_hyperparams else None,
@@ -639,7 +636,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        callbacks=[early_stopping_callback, CheckpointCallback(), CustomWandbCallback(experiment_params)],
+        callbacks=callbacks,
     )
 
     # Hyperparameter Tuning
@@ -654,60 +651,14 @@ def main():
             direction="maximize",
             backend="optuna",  # ray/optuna
             n_trials=10,  # number of trials
-            # Choose among many libraries:
-            # https://docs.ray.io/en/latest/tune/api_docs/suggestion.html
+            # Choose among many libraries: https://docs.ray.io/en/latest/tune/api_docs/suggestion.html
             # search_alg=HyperOptSearch(),
-            # Choose among schedulers:
-            # https://docs.ray.io/en/latest/tune/api_docs/schedulers.html
+            # Choose among schedulers: https://docs.ray.io/en/latest/tune/api_docs/schedulers.html
             # scheduler=AsyncHyperBand()
         )
         logger.info(best_trial)
         for n, v in best_trial.hyperparameters.items():
             setattr(trainer.args, n, v)
-
-    if training_args.do_train:
-        logger.info("*** Train ***")
-        checkpoint = None
-        if training_args.resume_from_checkpoint is not None:
-            checkpoint = training_args.resume_from_checkpoint
-        elif last_checkpoint is not None:
-            checkpoint = last_checkpoint
-        train_result = trainer.train(resume_from_checkpoint=checkpoint)
-        metrics = train_result.metrics
-        max_train_samples = (
-            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-        )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-
-        trainer.save_model()  # Saves the tokenizer too for easy upload
-
-        save_model(trainer.model, training_args.output_dir)
-
-        trainer.log_metrics("train", metrics)
-        trainer.save_metrics("train", metrics)
-        trainer.save_state()
-
-    def remove_metrics(metrics, split):
-        # remove unnecessary values to make overview nicer in wandb
-        metrics.pop(f"{split}_loss")
-        metrics.pop(f"{split}_runtime")
-        metrics.pop(f"{split}_steps_per_second")
-        metrics.pop(f"{split}_samples_per_second")
-
-    # load model ourselves because save_pretrained/load_pretrained might not work well for our hacked models
-    # load_model(trainer.model, training_args.output_dir)
-
-    if training_args.do_eval:
-        logger.info("*** Evaluate ***")
-
-        metrics = trainer.evaluate(eval_dataset=eval_dataset)
-        remove_metrics(metrics, 'eval')
-
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
 
     def predict(predict_dataset):
         preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
@@ -783,48 +734,99 @@ def main():
                           f"incorrect:\t{confidences['incorrect']['mean']}%\t+/-\t{confidences['incorrect']['std']}\n"
                 write_report_section(writer, "Mean confidence of predictions", content)
 
-    # Prediction
+    def remove_metrics(metrics, split):
+        # remove unnecessary values to make overview nicer in wandb
+        metrics.pop(f"{split}_loss")
+        metrics.pop(f"{split}_runtime")
+        metrics.pop(f"{split}_steps_per_second")
+        metrics.pop(f"{split}_samples_per_second")
+
+    if training_args.do_train:
+        logger.info("*** Train ***")
+        checkpoint = None
+        if training_args.resume_from_checkpoint is not None:
+            checkpoint = training_args.resume_from_checkpoint
+        elif last_checkpoint is not None:
+            checkpoint = last_checkpoint
+        train_result = trainer.train(resume_from_checkpoint=checkpoint)
+        metrics = train_result.metrics
+        max_train_samples = (
+            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+        )
+        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+
+        trainer.save_model()  # Saves the tokenizer too for easy upload
+
+        save_model(trainer.model, training_args.output_dir)
+
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
+        trainer.save_state()
+
+    # load model ourselves because save_pretrained/load_pretrained might not work well for our hacked models
+    # load_model(trainer.model, training_args.output_dir)
+
+    if training_args.do_eval:
+        logger.info("*** Evaluate ***")
+        metrics = trainer.evaluate(eval_dataset=eval_dataset)
+        remove_metrics(metrics, 'eval')
+
+        max_eval_samples = data_args.max_eval_samples if \
+            data_args.max_eval_samples is not None else len(eval_dataset)
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
+
+    base_output_dir = Path(training_args.output_dir)  # save it here because we overwrite it
     if training_args.do_predict and not data_args.tune_hyperparams:
         logger.info("*** Predict ***")
-        preds, labels, probs, metrics = predict(predict_dataset)
+        for lang in model_args.test_languages:
+            logger.info(f"Prediction for {lang}")
+            training_args.output_dir = base_output_dir / lang
+            training_args.output_dir.mkdir(parents=True, exist_ok=True)  # create directory
 
-        max_predict_samples = (
-            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
-        )
-        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
+            predict_dataset = predict_datasets[lang]
+            preds, labels, probs, metrics = predict(predict_dataset)
 
-        trainer.log_metrics("test", metrics)
-        trainer.save_metrics("test", metrics)
+            max_predict_samples = (
+                data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+            )
+            metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
 
-        # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
-        prefix = "test/"
-        if "wandb" in training_args.report_to:
-            metrics = {k.replace("test_", prefix): v for k, v in metrics.items()
-                       if "mem" not in k and k != "test_samples"}
-            wandb.log(metrics)  # log test metrics to wandb
+            trainer.log_metrics("test", metrics)
+            trainer.save_metrics("test", metrics)
 
-        write_reports(training_args.output_dir, preds, labels, probs, prefix)
+            # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
+            prefix = "test/"
+            if "wandb" in training_args.report_to:
+                metrics = {k.replace("test_", prefix): v for k, v in metrics.items()
+                           if "mem" not in k and k != "test_samples"}
+                wandb.log(metrics)  # log test metrics to wandb
 
-    # Sub Datasets
+            write_reports(training_args.output_dir, preds, labels, probs, prefix)
+
     if data_args.test_on_sub_datasets:
-        logger.info("*** Special Splits ***")
-        for experiment, parts in sub_datasets.items():
-            for part, dataset in parts.items():
-                if len(dataset) >= 50:  # below a minimum number the results are too noisy
-                    base_dir = Path(training_args.output_dir) / experiment / part
-                    base_dir.mkdir(parents=True, exist_ok=True)
-                    preds, labels, probs, metrics = predict(dataset)
-                    prefix = f"{experiment}/{part}/"
-                    if "wandb" in training_args.report_to:
-                        metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
-                        metrics[f'{prefix}support'] = len(dataset)
-                        wandb.log(metrics)  # log test metrics to wandb
-                    write_reports(base_dir, preds, labels, probs, prefix)
+        logger.info("*** Sub-Datasets ***")
+        for lang in model_args.test_languages:
+            logger.info(f"Sub-Datasets Prediction for {lang}")
+            for experiment, parts in sub_datasets.items():
+                for part, dataset in parts.items():
+                    if len(dataset) >= 50:  # below a minimum number the results are too noisy
+                        training_args.output_dir = Path(training_args.output_dir) / lang / experiment / part
+                        training_args.output_dir.mkdir(parents=True, exist_ok=True)
+                        preds, labels, probs, metrics = predict(dataset)
+                        prefix = f"{experiment}/{part}/"
+                        if "wandb" in training_args.report_to:
+                            metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
+                            metrics[f'{prefix}support'] = len(dataset)
+                            wandb.log(metrics)  # log test metrics to wandb
+                        write_reports(training_args.output_dir, preds, labels, probs, prefix)
 
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}
         if data_args.task_name is not None:
-            kwargs["language"] = model_args.evaluation_language
+            kwargs["language"] = model_args.test_languages
             kwargs["dataset_tags"] = "sjp"
             kwargs["dataset_args"] = data_args.task_name
             kwargs["dataset"] = f"SJP {data_args.task_name.upper()}"
@@ -839,7 +841,8 @@ def main():
         )
 
     # Clean up checkpoints
-    checkpoints = [filepath for filepath in glob.glob(f'{training_args.output_dir}/*/') if '/checkpoint' in filepath]
+    checkpoints = [filepath for filepath in glob.glob(f'{base_output_dir}/*/') if '/checkpoint' in filepath]
+    logger.info("Cleaning up checkpoints")
     for checkpoint in checkpoints:
         shutil.rmtree(checkpoint)
 
