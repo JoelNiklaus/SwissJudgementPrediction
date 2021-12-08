@@ -75,7 +75,7 @@ from hierarchical.hier_roberta.modeling_hier_roberta import HierRobertaForSequen
 from hierarchical.hier_xlm_roberta.configuration_hier_xlm_roberta import HierXLMRobertaConfig
 from hierarchical.hier_xlm_roberta.modeling_hier_xlm_roberta import HierXLMRobertaForSequenceClassification
 from arguments.model_arguments import ModelArguments, LabelImbalanceMethod, LongInputBertType, TrainType
-from utils.sentencizer import get_sentencizer
+from utils.sentencizer import get_sentencizer, combine_small_sentences, spacy_sentencize, get_spacy_sents
 
 os.environ['WANDB_MODE'] = "online"
 os.environ['WANDB_WATCH'] = "false"  # disable gradient logging
@@ -434,14 +434,9 @@ def main():
                 else:  # if the languages are mixed we need to load it from the case
                     for case in batch['text']:
                         nlp = sentencizers[case['language']]
-                        sents_list.append([sent.text for sent in nlp(case).sents])
+                        sents_list.append(get_spacy_sents(case, nlp))
                 for sents in sents_list:
-                    sentences = []
-                    for sent in sents:
-                        if len(sent) <= data_args.min_seg_len and len(sentences):
-                            sentences[-1] += ' ' + sent
-                        else:
-                            sentences.append(sent)
+                    sentences = combine_small_sentences(sents, data_args.min_seg_len)
                     batch['segments'].append(sentences)
 
             # Tokenize the texts
