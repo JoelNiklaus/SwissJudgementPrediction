@@ -23,20 +23,20 @@ data_dir = ROOT_DIR / 'data'
 augmented_path = data_dir / 'augmented'
 translated_path = augmented_path / 'translated'
 back_translated_path = augmented_path / 'back_translated'
-languages = ['de', 'fr', 'it']
+languages = ['de', 'fr', 'it', 'es', 'en']
+# the translations seem ok. Sometimes they seem to have some mistakes.
 model = EasyNMT('m2m_100_418M')  # RTX 3090 is not big enough for m2m_100_1.2B. opus-mt does not support fr-it and it-he
 
 
 # IMPORTANT: Use separate conda env (data_aug), because it installs transformers library (which messes with the adapter-transformers library!)
 
-
-# TODO check if the translations make sense
+# TODO save translated texts in batches to avoid timeout problems (35K documents take more than 24h)
 
 
 def translate_texts(source_lang, target_lang, texts):
     translated_texts_list = []
     for text in tqdm(texts):
-        translated = model.translate(text, source_lang=source_lang, target_lang=target_lang)
+        translated = model.translate(text, source_lang=source_lang, target_lang=target_lang, batch_size=8)
         translated_texts_list.append(translated)
     return translated_texts_list
 
@@ -102,7 +102,14 @@ if __name__ == '__main__':
 
     # TODO find reason for a number of languages
     source_lang = 'it'
-    target_langs_basic = ['de', 'fr', 'es', 'en', ]
-    opus_mt_langs = ['de', 'fr', 'es', 'en', 'he', 'ar', 'bg', 'ca', 'eo', 'is', 'lt', 'ms', 'uk', 'vi', ] # supported by opus-mt
-    m2m_100_langs = ['af', 'am', 'ar', 'ast', 'az', 'ba', 'be', 'bg', 'bn', 'br', 'bs', 'ca', 'ceb', 'cs', 'cy', 'da', 'de', 'el', 'en', 'es', 'et', 'fa', 'ff', 'fi', 'fr', 'fy', 'ga', 'gd', 'gl', 'gu', 'ha', 'he', 'hi', 'hr', 'ht', 'hu', 'hy', 'id', 'ig', 'ilo', 'is', 'it', 'ja', 'jv', 'ka', 'kk', 'km', 'kn', 'ko', 'lb', 'lg', 'ln', 'lo', 'lt', 'lv', 'mg', 'mk', 'ml', 'mn', 'mr', 'ms', 'my', 'ne', 'nl', 'no', 'ns', 'oc', 'or', 'pa', 'pl', 'ps', 'pt', 'ro', 'ru', 'sd', 'si', 'sk', 'sl', 'so', 'sq', 'sr', 'ss', 'su', 'sv', 'sw', 'ta', 'th', 'tl', 'tn', 'tr', 'uk', 'ur', 'uz', 'vi', 'wo', 'xh', 'yi', 'yo', 'zh', 'zu'] # supported by m2m_100
+    target_langs_basic = ['de', 'fr', 'en', 'es', 'pt']
+    opus_mt_langs = ['de', 'fr', 'es', 'en', 'he', 'ar', 'bg', 'ca', 'eo', 'is', 'lt', 'ms', 'uk',
+                     'vi', ]  # supported by opus-mt
+    m2m_100_langs = ['af', 'am', 'ar', 'ast', 'az', 'ba', 'be', 'bg', 'bn', 'br', 'bs', 'ca', 'ceb', 'cs', 'cy', 'da',
+                     'de', 'el', 'en', 'es', 'et', 'fa', 'ff', 'fi', 'fr', 'fy', 'ga', 'gd', 'gl', 'gu', 'ha', 'he',
+                     'hi', 'hr', 'ht', 'hu', 'hy', 'id', 'ig', 'ilo', 'is', 'it', 'ja', 'jv', 'ka', 'kk', 'km', 'kn',
+                     'ko', 'lb', 'lg', 'ln', 'lo', 'lt', 'lv', 'mg', 'mk', 'ml', 'mn', 'mr', 'ms', 'my', 'ne', 'nl',
+                     'no', 'ns', 'oc', 'or', 'pa', 'pl', 'ps', 'pt', 'ro', 'ru', 'sd', 'si', 'sk', 'sl', 'so', 'sq',
+                     'sr', 'ss', 'su', 'sv', 'sw', 'ta', 'th', 'tl', 'tn', 'tr', 'uk', 'ur', 'uz', 'vi', 'wo', 'xh',
+                     'yi', 'yo', 'zh', 'zu']  # supported by m2m_100
     back_translate(source_lang, target_langs_basic, debug=debug)

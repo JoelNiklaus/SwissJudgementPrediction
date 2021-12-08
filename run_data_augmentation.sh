@@ -13,6 +13,8 @@
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt
 
+# alternatively run multiprocess on 6 gtx1080ti gpus with qos job_gpu_preempt (further reduce batch size): only works with opus-mt model
+
 # Activate correct conda environment
 eval "$(conda shell.bash hook)"
 conda activate data_aug
