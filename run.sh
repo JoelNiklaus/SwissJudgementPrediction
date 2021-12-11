@@ -57,14 +57,14 @@ MAX_SAMPLES=100
 [ "$DEBUG" == "True" ] && FP16="False" || FP16="True"      # disable fp16 in debug mode because it might run on cpu
 
 # IMPORTANT: For bigger models, very small total batch sizes did not work (4 to 8), for some even 32 was too small
-TOTAL_BATCH_SIZE=64                                 # we made the best experiences with this (32 and below sometimes did not train well)
-NUM_EPOCHS=10                                       # high enough to be save, we use EarlyStopping anyway
-LABEL_IMBALANCE_METHOD=oversampling                 # this achieved the best results in our experiments
-SEG_TYPE=block                                      # one of sentence, paragraph, block, overlapping
-OVERWRITE_CACHE=True                                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
+TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32 and below sometimes did not train well)
+NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway, but sometimes it doesn't stop and the benefit of the epochs after 3-5 is very marginal
+LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
+SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
+OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
 
 # label smoothing cannot be used with a custom loss function
-# TODO test if this improves results
+# 0.1/0.2 seemed to be the best in the setting adapters-xlm-roberta-base-hierarchical de,fr to it
 [ "$LABEL_IMBALANCE_METHOD" == "class_weights" ] && LABEL_SMOOTHING_FACTOR=0.0 || LABEL_SMOOTHING_FACTOR=0.1
 
 # Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}, https://openreview.net/pdf?id=nzpLWnVAyah: RoBERTa apparently has a lot of instability with lr 3e-5
@@ -114,8 +114,8 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # French: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-fr-wiki_pfeiffer/
 # German: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-de-wiki_pfeiffer/, https://adapterhub.ml/adapters/ukp/xlm-roberta-base-de-wiki_pfeiffer/
 # IMPORTANT: so far, there is no xlm-roberta-base adapter for French and no bert-base-multilingual-cased adapter for Italian
-ADAPTER_CONFIG="houlsby"   # 'houlsby' or 'pfeiffer'
-ADAPTER_REDUCTION_FACTOR=4 # default 16
+ADAPTER_CONFIG="houlsby"   # 'houlsby' or 'pfeiffer': 'houlsby' seemed to be slightly better in the setting adapters-xlm-roberta-base-hierarchical de,fr to it
+ADAPTER_REDUCTION_FACTOR=2 # 2 (or 4) seems to get the best results in the setting adapters-xlm-roberta-base-hierarchical de,fr to it
 
 # For now disable lang adapters because it is too complicated and they are not available for all languages
 #[ "$TEST_LANGUAGES" != "$TRAIN_LANGUAGES" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="None"
