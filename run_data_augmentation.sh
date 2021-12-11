@@ -4,14 +4,17 @@
 #SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=24:00:00
+#SBATCH --time=15-00:00:00
 #SBATCH --mem=128GB
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:rtx3090:1
+#SBATCH --qos=job_gpu_stuermer
 #SBATCH --partition=gpu-invest
 
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt
+# enable this to get a time limit of 15 days
+###SBATCH --qos=job_gpu_stuermer
 
 # alternatively run multiprocess on 6 gtx1080ti gpus with qos job_gpu_preempt (further reduce batch size): only works with opus-mt model
 
