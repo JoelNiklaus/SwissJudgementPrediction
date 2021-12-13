@@ -61,6 +61,7 @@ TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32
 NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway, but sometimes it doesn't stop and the benefit of the epochs after 3-5 is very marginal
 LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
 SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
+DATA_AUGMENTATION_TYPE=translation  # one of None, translation or back_translation
 OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
 
 # label smoothing cannot be used with a custom loss function
@@ -155,6 +156,7 @@ CMD="python run_tc.py
   --max_seq_len $MAX_SEQ_LEN
   --max_segments $MAX_SEGMENTS
   --max_seg_len $MAX_SEG_LEN
+  --data_augmentation_type $DATA_AUGMENTATION_TYPE
   --num_train_epochs $NUM_EPOCHS
   --load_best_model_at_end
   --metric_for_best_model eval_f1_macro

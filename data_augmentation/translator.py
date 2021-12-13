@@ -12,17 +12,13 @@ Run this script from the root folder like this: python -m data_augmentation.tran
     - https://huggingface.co/Helsinki-NLP/opus-tatoeba-fr-it
 (d) - use easynmnt
 """
-from root import ROOT_DIR
+from root import DATA_DIR, TRANSLATION_DIR, BACK_TRANSLATION_DIR
 from pathlib import Path
 from shutil import copyfile
 import pandas as pd
 from tqdm import tqdm
 from easynmt import EasyNMT
 
-data_dir = ROOT_DIR / 'data'
-augmented_path = data_dir / 'augmented'
-translated_path = augmented_path / 'translated'
-back_translated_path = augmented_path / 'back_translated'
 languages = ['de', 'fr', 'it', 'es', 'en']
 # the translations seem ok. Sometimes they seem to have some mistakes.
 model = EasyNMT('m2m_100_418M')  # RTX 3090 is not big enough for m2m_100_1.2B. opus-mt does not support fr-it and it-he
@@ -42,12 +38,12 @@ def translate_texts(source_lang, target_lang, texts):
 
 
 def translate(source_langs, target_lang, debug=False) -> None:
-    target_path = translated_path / target_lang
+    target_path = TRANSLATION_DIR / target_lang
     target_path.mkdir(parents=True, exist_ok=True)
-    copyfile(f'{data_dir}/{target_lang}/labels.json', f'{target_path}/labels.json')  # copy labels.json file
+    copyfile(f'{DATA_DIR}/{target_lang}/labels.json', f'{target_path}/labels.json')  # copy labels.json file
 
     for lang in source_langs:
-        file_path = f'{data_dir}/{lang}/train.csv'
+        file_path = f'{DATA_DIR}/{lang}/train.csv'
         target_file_path = target_path / f'train_{lang}.csv'
         if Path(target_file_path).exists():
             print(f"Already processed {target_file_path}. Skipping...")
@@ -67,12 +63,12 @@ def translate(source_langs, target_lang, debug=False) -> None:
 
 def back_translate(source_lang, target_langs, debug=False) -> None:
     # https://huggingface.co/blog/how-to-generate We could also play with different temperatures, etc.
-    target_path = back_translated_path / source_lang
+    target_path = BACK_TRANSLATION_DIR / source_lang
     target_path.mkdir(parents=True, exist_ok=True)
-    copyfile(f'{data_dir}/{source_lang}/labels.json', f'{target_path}/labels.json')  # copy labels.json file
+    copyfile(f'{DATA_DIR}/{source_lang}/labels.json', f'{target_path}/labels.json')  # copy labels.json file
 
     for lang in target_langs:
-        file_path = f'{data_dir}/{source_lang}/train.csv'
+        file_path = f'{DATA_DIR}/{source_lang}/train.csv'
         target_file_path = target_path / f'train_{lang}.csv'
         if Path(target_file_path).exists():
             print(f"Already processed {target_file_path}. Skipping...")

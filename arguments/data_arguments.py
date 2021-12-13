@@ -17,6 +17,11 @@ class SegmentationType(str, ExplicitEnum):
     OVERLAPPING = "overlapping"
 
 
+class DataAugmentationType(str, ExplicitEnum):
+    TRANSLATION = "translation"
+    BACK_TRANSLATION = "back_translation"
+
+
 @dataclass
 class DataArguments:
     """
@@ -71,6 +76,9 @@ class DataArguments:
                     "If False, will pad the samples dynamically when batching to the maximum length in the batch. "
                     "Padding to 'longest' may lead to problems in hierarchical and long bert."
         },
+    )
+    data_augmentation_type: DataAugmentationType = field(
+        default=None, metadata={"help": "What type of data augmentation to use"},
     )
     test_on_sub_datasets: bool = field(
         default=False,

@@ -63,9 +63,10 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
+from root import DATA_DIR, AUGMENTED_DIR
 from utils.custom_callbacks import CustomWandbCallback
 from long import LongBert
-from arguments.data_arguments import DataArguments, ProblemType, SegmentationType
+from arguments.data_arguments import DataArguments, ProblemType, SegmentationType, DataAugmentationType
 from hierarchical.hier_bert.configuration_hier_bert import HierBertConfig
 from hierarchical.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
 from hierarchical.hier_camembert.configuration_hier_camembert import HierCamembertConfig
@@ -188,25 +189,29 @@ def main():
     train_datasets, eval_datasets, = [], []
     if training_args.do_train:
         for lang in model_args.train_languages:
-            train_dataset = load_dataset("csv", data_files={"train": f'data/{lang}/train.csv'})['train']
+            train_files = [DATA_DIR / lang / 'train.csv']
+            if data_args.data_augmentation_type:  # if it is not None
+                path = AUGMENTED_DIR / data_args.data_augmentation_type.value / lang
+                train_files.extend(glob.glob(f"{path}/*.csv"))  # add all files inside this path
+            train_dataset = load_dataset("csv", data_files={"train": train_files})['train']
             train_datasets.append(train_dataset)
         train_dataset = concatenate_datasets(train_datasets)  # we want to train on all datasets at the same time
 
     if training_args.do_eval:
         for lang in model_args.train_languages:
-            eval_dataset = load_dataset("csv", data_files={"validation": f'data/{lang}/val.csv'})['validation']
+            eval_dataset = load_dataset("csv", data_files={"validation": DATA_DIR / lang / 'val.csv'})['validation']
             eval_datasets.append(eval_dataset)
         eval_dataset = concatenate_datasets(eval_datasets)  # we want to evaluate on all datasets at the same time
 
     predict_datasets, sub_datasets = {}, {}
     for lang in model_args.test_languages:
         if training_args.do_predict:
-            predict_dataset = load_dataset("csv", data_files={"test": f'data/{lang}/test.csv'})['test']
+            predict_dataset = load_dataset("csv", data_files={"test": DATA_DIR / lang / 'test.csv'})['test']
             predict_datasets[lang] = predict_dataset
 
         if data_args.test_on_sub_datasets:
             lang_sub_datasets = dict()
-            for file in glob.glob(f'data/{lang}/sub_datasets/*/*.csv'):
+            for file in glob.glob(f'{DATA_DIR}/{lang}/sub_datasets/*/*.csv'):
                 experiment = Path(file).parent.stem
                 part = Path(file).stem.split("-")[1]
                 if experiment not in lang_sub_datasets:
@@ -215,7 +220,7 @@ def main():
             sub_datasets[lang] = lang_sub_datasets
 
     # Labels: just take the labels from the first language. We assume that they are identical anyway.
-    with open(f'data/{model_args.train_languages[0]}/labels.json', 'r') as f:
+    with open(DATA_DIR / model_args.train_languages[0] / 'labels.json', 'r') as f:
         label_dict = json.load(f)
         label_dict['id2label'] = {int(k): v for k, v in label_dict['id2label'].items()}
         label_dict['label2id'] = {k: int(v) for k, v in label_dict['label2id'].items()}
