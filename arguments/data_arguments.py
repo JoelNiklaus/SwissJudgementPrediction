@@ -20,6 +20,7 @@ class SegmentationType(str, ExplicitEnum):
 class DataAugmentationType(str, ExplicitEnum):
     TRANSLATION = "translation"
     BACK_TRANSLATION = "back_translation"
+    NO_AUGMENTATION = "no_augmentation"
 
 
 @dataclass
@@ -78,7 +79,7 @@ class DataArguments:
         },
     )
     data_augmentation_type: DataAugmentationType = field(
-        default=None, metadata={"help": "What type of data augmentation to use"},
+        default=DataAugmentationType.NO_AUGMENTATION, metadata={"help": "What type of data augmentation to use"},
     )
     test_on_sub_datasets: bool = field(
         default=False,

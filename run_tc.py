@@ -181,6 +181,15 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
+    def remove_unused_features(datasets):
+        for i in range(len(datasets)):
+            columns_to_remove = ['chamber', 'origin_region', 'origin_canton', 'origin_court', 'origin_chamber',
+                                 'num_tokens_spacy', 'num_tokens_bert', 'legal_area', ]
+            for column in columns_to_remove:
+                if column in datasets[i].column_names:
+                    datasets[i] = datasets[i].remove_columns(column)
+        return datasets
+
     # transform comma separated string into list of languages
     # NOTE multiple test_languages are not possible when using language adapters
     model_args.train_languages = model_args.train_languages.split(",")
@@ -189,34 +198,40 @@ def main():
     train_datasets, eval_datasets, = [], []
     if training_args.do_train:
         for lang in model_args.train_languages:
-            train_files = [DATA_DIR / lang / 'train.csv']
+            train_files = [(DATA_DIR / lang / 'train.csv').as_posix()]
             if data_args.data_augmentation_type:  # if it is not None
-                path = AUGMENTED_DIR / data_args.data_augmentation_type.value / lang
+                path = AUGMENTED_DIR / data_args.data_augmentation_type / lang
                 train_files.extend(glob.glob(f"{path}/*.csv"))  # add all files inside this path
             train_dataset = load_dataset("csv", data_files={"train": train_files})['train']
             train_datasets.append(train_dataset)
+        train_datasets = remove_unused_features(train_datasets)
         train_dataset = concatenate_datasets(train_datasets)  # we want to train on all datasets at the same time
 
     if training_args.do_eval:
         for lang in model_args.train_languages:
-            eval_dataset = load_dataset("csv", data_files={"validation": DATA_DIR / lang / 'val.csv'})['validation']
+            eval_path = (DATA_DIR / lang / 'val.csv').as_posix()
+            eval_dataset = load_dataset("csv", data_files={"validation": eval_path})['validation']
             eval_datasets.append(eval_dataset)
+        eval_datasets = remove_unused_features(eval_datasets)
         eval_dataset = concatenate_datasets(eval_datasets)  # we want to evaluate on all datasets at the same time
 
     predict_datasets, sub_datasets = {}, {}
     for lang in model_args.test_languages:
         if training_args.do_predict:
-            predict_dataset = load_dataset("csv", data_files={"test": DATA_DIR / lang / 'test.csv'})['test']
+            predict_path = (DATA_DIR / lang / 'test.csv').as_posix()
+            predict_dataset = load_dataset("csv", data_files={"test": predict_path})['test']
             predict_datasets[lang] = predict_dataset
 
         if data_args.test_on_sub_datasets:
             lang_sub_datasets = dict()
-            for file in glob.glob(f'{DATA_DIR}/{lang}/sub_datasets/*/*.csv'):
-                experiment = Path(file).parent.stem
-                part = Path(file).stem.split("-")[1]
-                if experiment not in lang_sub_datasets:
-                    lang_sub_datasets[experiment] = dict()
-                lang_sub_datasets[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
+            lang_sub_dataset_dir = DATA_DIR / lang / 'sub_datasets'
+            if lang_sub_dataset_dir.exists():  # for example in the indian dataset we don't have this
+                for file in glob.glob(f'{lang_sub_dataset_dir}/*/*.csv'):
+                    experiment = Path(file).parent.stem
+                    part = Path(file).stem.split("-")[1]
+                    if experiment not in lang_sub_datasets:
+                        lang_sub_datasets[experiment] = dict()
+                    lang_sub_datasets[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
             sub_datasets[lang] = lang_sub_datasets
 
     # Labels: just take the labels from the first language. We assume that they are identical anyway.
@@ -384,7 +399,6 @@ def main():
                         "Use --train_adapter to enable adapter training"
                     )
 
-        # TODO test this!
         if model_args.train_type == TrainType.BITFIT:
             # https://arxiv.org/abs/2106.10199, https://arxiv.org/abs/2109.00904
             for p in model.named_parameters():

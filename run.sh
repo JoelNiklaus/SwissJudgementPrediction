@@ -18,7 +18,10 @@ while [ $# -gt 0 ]; do
     TRAIN_LANGUAGES="${1#*=}" # comma separated list of 'de', 'fr', 'it', 'en' (example: de,fr NO SPACE!)
     ;;
   --test_languages=*)
-    TEST_LANGUAGES="${1#*=}" # one of 'de', 'fr', 'it'
+    TEST_LANGUAGES="${1#*=}" # one of 'de', 'fr', 'it', 'en'
+    ;;
+  --data_augmentation_type=*)
+    DATA_AUGMENTATION_TYPE="${1#*=}" # one of 'no_augmentation', 'translation' or 'back_translation'
     ;;
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
@@ -61,7 +64,6 @@ TOTAL_BATCH_SIZE=64                 # we made the best experiences with this (32
 NUM_EPOCHS=5                        # high enough to be save, we use EarlyStopping anyway, but sometimes it doesn't stop and the benefit of the epochs after 3-5 is very marginal
 LABEL_IMBALANCE_METHOD=oversampling # this achieved the best results in our experiments
 SEG_TYPE=block                      # one of sentence, paragraph, block, overlapping
-DATA_AUGMENTATION_TYPE=translation  # one of None, translation or back_translation
 OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true as soon as something with the data changes
 
 # label smoothing cannot be used with a custom loss function
@@ -116,7 +118,7 @@ ACCUMULATION_STEPS=$((TOTAL_BATCH_SIZE / BATCH_SIZE)) # use this to achieve a su
 # German: https://adapterhub.ml/adapters/ukp/bert-base-multilingual-cased-de-wiki_pfeiffer/, https://adapterhub.ml/adapters/ukp/xlm-roberta-base-de-wiki_pfeiffer/
 # IMPORTANT: so far, there is no xlm-roberta-base adapter for French and no bert-base-multilingual-cased adapter for Italian
 ADAPTER_CONFIG="houlsby"   # 'houlsby' or 'pfeiffer': 'houlsby' seemed to be slightly better in the setting adapters-xlm-roberta-base-hierarchical de,fr to it
-ADAPTER_REDUCTION_FACTOR=2 # 2 (or 4) seems to get the best results in the setting adapters-xlm-roberta-base-hierarchical de,fr to it
+ADAPTER_REDUCTION_FACTOR=4 # 2 and 4 seem to get the best results in the setting adapters-xlm-roberta-base-hierarchical de,fr to it
 
 # For now disable lang adapters because it is too complicated and they are not available for all languages
 #[ "$TEST_LANGUAGES" != "$TRAIN_LANGUAGES" ] && LOAD_LANG_ADAPTER="$LANGUAGE/wiki@ukp" || LOAD_LANG_ADAPTER="None"
@@ -143,6 +145,7 @@ CMD="python run_tc.py
   --fp16 $FP16
   --fp16_full_eval $FP16
   --group_by_length
+  --pad_to_max_length
   --logging_strategy steps
   --evaluation_strategy epoch
   --save_strategy epoch
@@ -163,11 +166,11 @@ CMD="python run_tc.py
   --early_stopping_patience 2
   --save_total_limit 5
   --report_to $REPORT
-  --overwrite_output_dir True
+  --overwrite_output_dir
   --overwrite_cache $OVERWRITE_CACHE
   --test_on_sub_datasets $SUB_DATASETS
   --train_type $TRAIN_TYPE
-  --train_adapter True
+  --train_adapter
   --adapter_config $ADAPTER_CONFIG
   --adapter_reduction_factor $ADAPTER_REDUCTION_FACTOR
   $MAX_SAMPLES_ENABLED
