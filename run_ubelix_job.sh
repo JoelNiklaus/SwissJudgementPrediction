@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:rtx3090:1
 #SBATCH --qos=job_gpu_preempt
 #SBATCH --partition=gpu
-#SBATCH --array=2-4%3
+#SBATCH --array=2-4
 
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt

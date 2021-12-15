@@ -553,12 +553,12 @@ def main():
         # macro averaging is a better evaluation metric for imbalanced label distributions
         precision, recall, f1_macro, _ = precision_recall_fscore_support(labels, preds, average='macro')
         return OrderedDict({
-            'average_precision': average_precision,
-            'roc_auc': roc_auc,
-            'balanced_accuracy': balanced_accuracy,
-            'f1_macro': f1_macro,
             'precision': precision,
             'recall': recall,
+            'f1_macro': f1_macro,
+            'balanced_accuracy': balanced_accuracy,
+            'average_precision': average_precision,
+            'roc_auc': roc_auc,
         })
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
@@ -812,10 +812,10 @@ def main():
             trainer.save_metrics("test", metrics)
 
             # rename metrics so that they appear in separate section in wandb and filter out unnecessary ones
-            prefix = "test/"
+            prefix = f"test/{lang}/"
             if "wandb" in training_args.report_to:
-                metrics = {k.replace("test_", prefix): v for k, v in metrics.items()
-                           if "mem" not in k and k != "test_samples"}
+                metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
+                # if "mem" not in k and k != "test_samples"}
                 wandb.log(metrics)  # log test metrics to wandb
 
             write_reports(training_args.output_dir, preds, labels, probs, prefix)
@@ -830,7 +830,7 @@ def main():
                         training_args.output_dir = Path(training_args.output_dir) / lang / experiment / part
                         training_args.output_dir.mkdir(parents=True, exist_ok=True)
                         preds, labels, probs, metrics = predict(dataset)
-                        prefix = f"{experiment}/{part}/"
+                        prefix = f"{lang}/{experiment}/{part}/"
                         if "wandb" in training_args.report_to:
                             metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
                             metrics[f'{prefix}support'] = len(dataset)
