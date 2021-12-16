@@ -226,13 +226,15 @@ def main():
             lang_sub_datasets = dict()
             lang_sub_dataset_dir = DATA_DIR / lang / 'sub_datasets'
             if lang_sub_dataset_dir.exists():  # for example in the indian dataset we don't have this
+                sub_datasets_to_run = ['input_length', 'legal_area', 'year', 'origin_canton', 'origin_region']
                 for file in glob.glob(f'{lang_sub_dataset_dir}/*/*.csv'):
                     experiment = Path(file).parent.stem
-                    part = Path(file).stem.split("-")[1]
-                    if experiment not in lang_sub_datasets:
-                        lang_sub_datasets[experiment] = dict()
-                    lang_sub_datasets[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
-            sub_datasets[lang] = lang_sub_datasets
+                    if experiment in sub_datasets_to_run:  # exclude very large ones like origin_court and origin_chamber
+                        part = Path(file).stem.split("-")[1]
+                        if experiment not in lang_sub_datasets:
+                            lang_sub_datasets[experiment] = dict()
+                        lang_sub_datasets[experiment][part] = load_dataset("csv", data_files={"test": file})['test']
+                sub_datasets[lang] = lang_sub_datasets
 
     # Labels: just take the labels from the first language. We assume that they are identical anyway.
     with open(DATA_DIR / model_args.train_languages[0] / 'labels.json', 'r') as f:
@@ -822,18 +824,18 @@ def main():
 
     if data_args.test_on_sub_datasets:
         logger.info("*** Sub-Datasets ***")
-        for lang in model_args.test_languages:
+        for lang in sub_datasets.keys():
             logger.info(f"Sub-Datasets Prediction for {lang}")
-            for experiment, parts in sub_datasets.items():
+            for experiment, parts in sub_datasets[lang].items():
                 for part, dataset in parts.items():
-                    if len(dataset) >= 50:  # below a minimum number the results are too noisy
-                        training_args.output_dir = Path(training_args.output_dir) / lang / experiment / part
+                    if dataset.num_rows >= 50:  # below a minimum number the results are too noisy
+                        prefix = f"{lang}/{experiment}/{part}/"
+                        training_args.output_dir = Path(training_args.output_dir) / prefix
                         training_args.output_dir.mkdir(parents=True, exist_ok=True)
                         preds, labels, probs, metrics = predict(dataset)
-                        prefix = f"{lang}/{experiment}/{part}/"
                         if "wandb" in training_args.report_to:
                             metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
-                            metrics[f'{prefix}support'] = len(dataset)
+                            metrics[f'{prefix}support'] = dataset.num_rows
                             wandb.log(metrics)  # log test metrics to wandb
                         write_reports(training_args.output_dir, preds, labels, probs, prefix)
 
