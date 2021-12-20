@@ -520,7 +520,7 @@ def main():
             predict_datasets[lang] = preprocess_dataset(predict_datasets[lang])
 
     if data_args.test_on_sub_datasets:
-        for lang in model_args.test_languages:
+        for lang in sub_datasets.keys():
             for experiment, parts in sub_datasets[lang].items():
                 for part, dataset in parts.items():
                     sub_datasets[lang][experiment][part] = preprocess_dataset(dataset)
