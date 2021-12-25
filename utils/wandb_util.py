@@ -41,13 +41,3 @@ def pd_dp(df):
     """
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.max_colwidth', None):
         print(df)
-
-
-def round(series):
-    """Convert a result from 0-1 to a number between 0 and 100 rounded to 2 decimals"""
-    return (series * 100).round(2)
-
-
-def result_cell(series, connector='±'):
-    """Create a result cell from a series by returning the mean and standard deviation"""
-    return f"{round(series.mean())} {connector} {round(series.std())}"
