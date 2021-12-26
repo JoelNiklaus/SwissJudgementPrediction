@@ -23,6 +23,78 @@ class DataAugmentationType(str, ExplicitEnum):
     NO_AUGMENTATION = "no_augmentation"
 
 
+class SubDataset(ExplicitEnum):
+    """Only legal area and origin canton make sense for training"""
+
+    # INPUT_LENGTH = "input_length"
+    # YEAR = "year"
+    # LEGAL_AREA = "legal_area"
+    # ORIGIN_REGION = "origin_region"
+    # ORIGIN_CANTON = "origin_canton"
+    # ORIGIN_COURT = "origin_court"
+    # ORIGIN_CHAMBER = "origin_chamber"
+    @staticmethod
+    def from_str(label):
+        try:
+            return LegalArea(label)
+        except ValueError:
+            try:
+                return OriginCanton(label)
+            except ValueError:
+                raise ValueError(f"Your label {label} is neither a LegalArea nor an OriginCanton")
+
+
+class LegalArea(str, SubDataset):
+    PUBLIC_LAW = "public_law"
+    CIVIL_LAW = "civil_law"
+    PENAL_LAW = "penal_law"
+    SOCIAL_LAW = "social_law"
+    INSURANCE_LAW = "insurance_law"
+
+    # OTHER = "other"  # cannot be used for training: too small
+
+    def get_dataset_column_name(self):
+        return "legal_area"
+
+
+class OriginCanton(str, SubDataset):
+    ZURICH = "ZH"
+    BERNE = "BE"
+    LUCERNE = "LU"
+    URI = "UR"
+    SCHWYZ = "SZ"
+    OBWALDEN = "OW"
+    NIDWALDEN = "NW"
+    GLARUS = "GL"
+    ZUG = "ZG"
+    FRIBOURG = "FR"
+    SOLEURE = "SO"
+    BASEL_CITY = "BS"
+    BASEL_COUNTRY = "BL"
+    SHAFFHAUSEN = "SH"
+    APPENZELL_OUTER_RHODES = "AR"
+    APPENZELL_INNER_RHODES = "AI"
+    ST_GALL = "SG"
+    GRISONS = "GR"
+    ARGOVIA = "AG"
+    THURGOVIA = "TG"
+    TICINO = "TI"
+    VAUD = "VD"
+    VALAIS = "VS"
+    NEUCHATEL = "NE"
+    GENEVE = "GE"
+    JURA = "JU"
+    CONFEDERATION = "CH"
+
+    def get_dataset_column_name(self):
+        return "origin_canton"
+
+
+class Jurisdiction(str, ExplicitEnum):
+    SWITZERLAND = "switzerland"
+    INDIA = "india"
+
+
 @dataclass
 class DataArguments:
     """
@@ -71,7 +143,7 @@ class DataArguments:
         default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."},
     )
     pad_to_max_length: bool = field(
-        default=True,  # TODO change to false again if everything works
+        default=True,
         metadata={
             "help": "Whether to pad all samples to `max_seq_len`. "
                     "If False, will pad the samples dynamically when batching to the maximum length in the batch. "
@@ -81,6 +153,12 @@ class DataArguments:
     data_augmentation_type: DataAugmentationType = field(
         default=DataAugmentationType.NO_AUGMENTATION, metadata={"help": "What type of data augmentation to use"},
     )
+    train_sub_datasets: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Whether to train on certain sub datasets only or not (training on all of them)."
+        },
+    )
     test_on_sub_datasets: bool = field(
         default=False,
         metadata={
@@ -88,7 +166,7 @@ class DataArguments:
         },
     )
     problem_type: ProblemType = field(
-        default="single_label_classification",
+        default=ProblemType.SINGLE_LABEL_CLASSIFICATION,
         metadata={
             "help": "Problem type for XxxForSequenceClassification models. "
         },

@@ -66,7 +66,8 @@ from transformers.utils import check_min_version
 from root import DATA_DIR, AUGMENTED_DIR
 from utils.custom_callbacks import CustomWandbCallback
 from long import LongBert
-from arguments.data_arguments import DataArguments, ProblemType, SegmentationType, DataAugmentationType
+from arguments.data_arguments import DataArguments, ProblemType, SegmentationType, DataAugmentationType, LegalArea, \
+    OriginCanton, SubDataset
 from hierarchical.hier_bert.configuration_hier_bert import HierBertConfig
 from hierarchical.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
 from hierarchical.hier_camembert.configuration_hier_camembert import HierCamembertConfig
@@ -190,6 +191,24 @@ def main():
                     datasets[i] = datasets[i].remove_columns(column)
         return datasets
 
+    def filter_by_sub_datasets(dataset):
+        if data_args.train_sub_datasets not in ['None', 'False']:  # if we want to train on special sub datasets only
+            train_sub_datasets = data_args.train_sub_datasets.split(",")
+            train_sub_datasets = [SubDataset.from_str(sub_dataset) for sub_dataset in train_sub_datasets]
+            assert 'en' not in model_args.train_languages  # the Indian dataset does not have these metadata
+
+            def item_is_in_sub_datasets(item):
+                for sub_dataset in train_sub_datasets:
+                    assert isinstance(sub_dataset, SubDataset) and \
+                           (isinstance(sub_dataset, LegalArea) or isinstance(sub_dataset, OriginCanton))
+                    if item[sub_dataset.get_dataset_column_name()] == sub_dataset:
+                        return True
+                return False
+
+            dataset = dataset.filter(item_is_in_sub_datasets,
+                                     load_from_cache_file=not data_args.overwrite_cache)
+        return dataset
+
     # transform comma separated string into list of languages
     # NOTE multiple test_languages are not possible when using language adapters
     model_args.train_languages = model_args.train_languages.split(",")
@@ -204,16 +223,20 @@ def main():
                 train_files.extend(glob.glob(f"{path}/*.csv"))  # add all files inside this path
             train_dataset = load_dataset("csv", data_files={"train": train_files})['train']
             train_datasets.append(train_dataset)
-        train_datasets = remove_unused_features(train_datasets)
+        if 'en' in model_args.train_languages:  # if we train with the Indian dataset
+            train_datasets = remove_unused_features(train_datasets)  # we need to remove some columns, so we can merge
         train_dataset = concatenate_datasets(train_datasets)  # we want to train on all datasets at the same time
+        train_dataset = filter_by_sub_datasets(train_dataset)
 
     if training_args.do_eval:
         for lang in model_args.train_languages:
             eval_path = (DATA_DIR / lang / 'val.csv').as_posix()
             eval_dataset = load_dataset("csv", data_files={"validation": eval_path})['validation']
             eval_datasets.append(eval_dataset)
-        eval_datasets = remove_unused_features(eval_datasets)
+        if 'en' in model_args.train_languages:  # if we train with the Indian dataset
+            eval_datasets = remove_unused_features(eval_datasets)  # we need to remove some columns, so we can merge
         eval_dataset = concatenate_datasets(eval_datasets)  # we want to evaluate on all datasets at the same time
+        eval_dataset = filter_by_sub_datasets(eval_dataset)
 
     predict_datasets, sub_datasets = {}, {}
     for lang in model_args.test_languages:

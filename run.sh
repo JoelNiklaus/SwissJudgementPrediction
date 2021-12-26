@@ -23,6 +23,9 @@ while [ $# -gt 0 ]; do
   --data_augmentation_type=*)
     DATA_AUGMENTATION_TYPE="${1#*=}" # one of 'no_augmentation', 'translation' or 'back_translation'
     ;;
+  --train_sub_datasets=*)
+    TRAIN_SUB_DATASETS="${1#*=}" # instances of LegalArea or OriginCanton such as civil_law or SG
+    ;;
   --sub_datasets=*)
     SUB_DATASETS="${1#*=}" # one of 'True' or 'False'
     ;;
@@ -48,6 +51,7 @@ printf "Argument MODEL_NAME is \t\t\t %s\n" "$MODEL_NAME"
 printf "Argument MODEL_TYPE is \t\t\t %s\n" "$MODEL_TYPE"
 printf "Argument TRAIN_LANGUAGES is \t\t %s\n" "$TRAIN_LANGUAGES"
 printf "Argument TEST_LANGUAGES is \t\t %s\n" "$TEST_LANGUAGES"
+printf "Argument TRAIN_SUB_DATASETS is \t\t %s\n" "$TRAIN_SUB_DATASETS"
 printf "Argument SUB_DATASETS is \t\t %s\n" "$SUB_DATASETS"
 printf "Argument SEED is \t\t\t %s\n" "$SEED"
 printf "Argument DEBUG is \t\t\t %s\n" "$DEBUG"
@@ -168,6 +172,7 @@ CMD="python run_tc.py
   --report_to $REPORT
   --overwrite_output_dir
   --overwrite_cache $OVERWRITE_CACHE
+  --train_sub_datasets $TRAIN_SUB_DATASETS
   --test_on_sub_datasets $SUB_DATASETS
   --train_type $TRAIN_TYPE
   --train_adapter
