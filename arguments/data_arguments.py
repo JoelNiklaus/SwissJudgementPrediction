@@ -49,8 +49,8 @@ class LegalArea(str, SubDataset):
     CIVIL_LAW = "civil_law"
     PENAL_LAW = "penal_law"
     SOCIAL_LAW = "social_law"
-    INSURANCE_LAW = "insurance_law"
 
+    # INSURANCE_LAW = "insurance_law"  # there is no evaluation set
     # OTHER = "other"  # cannot be used for training: too small
 
     def get_dataset_column_name(self):
