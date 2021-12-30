@@ -39,9 +39,13 @@ class SubDataset(ExplicitEnum):
             return LegalArea(label)
         except ValueError:
             try:
-                return OriginCanton(label)
+                return OriginRegion(label)
             except ValueError:
-                raise ValueError(f"Your label {label} is neither a LegalArea nor an OriginCanton")
+                try:
+                    return OriginCanton(label)
+                except ValueError:
+                    message = f"Your label {label} is neither a LegalArea nor an OriginRegion nor an OriginCanton"
+                    raise ValueError(message)
 
 
 class LegalArea(str, SubDataset):
@@ -55,6 +59,20 @@ class LegalArea(str, SubDataset):
 
     def get_dataset_column_name(self):
         return "legal_area"
+
+
+class OriginRegion(str, SubDataset):
+    EASTERN_SWITZERLAND = "Eastern_Switzerland"
+    ZURICH = "Zürich"
+    CENTRAL_SWITZERLAND = "Central_Switzerland"
+    NORTHWESTERN_SWITZERLAND = "Northwestern_Switzerland"
+    ESPACE_MITTELLAND = "Espace_Mittelland"
+    REGION_LEMANIQUE = "Region_Lemanique"
+    TICINO = "Ticino"
+    FEDERATION = "Federation"
+
+    def get_dataset_column_name(self):
+        return "origin_region"
 
 
 class OriginCanton(str, SubDataset):
@@ -103,6 +121,10 @@ class DataArguments:
     Using `HfArgumentParser` we can turn this class into argparse arguments
     to be able to specify them on the command line.
     """
+    experiment_name: Optional[str] = field(
+        default="",  # e.g. cross-domain, multi-lingual, mono-lingual
+        metadata={"help": "The name of the experiment this run is part of."}
+    )
     tune_hyperparams: bool = field(
         default=False, metadata={"help": "Whether or not to tune the hyperparameters before training."},
     )

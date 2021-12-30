@@ -67,7 +67,7 @@ from root import DATA_DIR, AUGMENTED_DIR
 from utils.custom_callbacks import CustomWandbCallback
 from long import LongBert
 from arguments.data_arguments import DataArguments, ProblemType, SegmentationType, DataAugmentationType, LegalArea, \
-    OriginCanton, SubDataset
+    OriginCanton, SubDataset, OriginRegion
 from hierarchical.hier_bert.configuration_hier_bert import HierBertConfig
 from hierarchical.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
 from hierarchical.hier_camembert.configuration_hier_camembert import HierCamembertConfig
@@ -200,7 +200,8 @@ def main():
             def item_is_in_sub_datasets(item):
                 for sub_dataset in train_sub_datasets:
                     assert isinstance(sub_dataset, SubDataset) and \
-                           (isinstance(sub_dataset, LegalArea) or isinstance(sub_dataset, OriginCanton))
+                           (isinstance(sub_dataset, LegalArea) or
+                            isinstance(sub_dataset, OriginCanton) or isinstance(sub_dataset, OriginRegion))
                     if item[sub_dataset.get_dataset_column_name()] == sub_dataset:
                         return True
                 return False
@@ -739,6 +740,8 @@ def main():
                 result['error'].append(error)
             pd.DataFrame.from_dict(result).to_csv(f'{base_dir}/predictions.csv')
 
+            # IMPORTANT: These confidences are misleading!
+            # Use calibration to get better confidences: https://towardsdatascience.com/neural-network-calibration-using-pytorch-c44b7221a61
             # write confidences to csv
             confidences = {"correct": {"mean": np.mean(correct_confidences), "std": np.std(correct_confidences)},
                            "incorrect": {"mean": np.mean(incorrect_confidences), "std": np.std(incorrect_confidences)}}

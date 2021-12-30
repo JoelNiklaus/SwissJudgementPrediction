@@ -4,6 +4,17 @@ import wandb
 from root import ROOT_DIR
 
 
+def update_runs(project_name):
+    """This is an example function which can be used to update the configs of some runs"""
+    api = wandb.Api()
+    runs = api.runs(project_name)
+    for run in runs:
+        print(run.config)
+        if run.config["data_args"]['train_sub_datasets'] == "False":
+            run.config["data_args"]["train_sub_datasets"] = "None"
+            run.update()
+
+
 def retrieve_results(project_name, path=ROOT_DIR / "project.csv", user="joelito", overwrite_cache=False):
     """Retrieve the results from the wandb api, save them to a csv file and return as a df"""
     if not overwrite_cache and path.exists():
