@@ -4,16 +4,23 @@
 #SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=24:00:00
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:rtx3090:1
-#SBATCH --qos=job_gpu_preempt
-#SBATCH --partition=gpu
+#SBATCH --time=20-00:00:00
+#SBATCH --qos=job_gpu_stuermer
+#SBATCH --partition=gpu-invest
 #SBATCH --array=2-4
 
-# enable this when on gpu partition (and NOT on gpu-invest)
+# enable this for multiple GPUs for max 24h
+###SBATCH --time=24:00:00
 ###SBATCH --qos=job_gpu_preempt
+###SBATCH --partition=gpu
+
+# enable this to get a time limit of 20 days
+###SBATCH --time=20-00:00:00
+###SBATCH --qos=job_gpu_stuermer
+###SBATCH --partition=gpu-invest
 
 # Activate correct conda environment
 eval "$(conda shell.bash hook)"

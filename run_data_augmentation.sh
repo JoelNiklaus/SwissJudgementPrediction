@@ -13,7 +13,7 @@
 
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt
-# enable this to get a time limit of 15 days
+# enable this to get a time limit of 20 days
 ###SBATCH --qos=job_gpu_stuermer
 
 # alternatively run multiprocess on 6 gtx1080ti gpus with qos job_gpu_preempt (further reduce batch size): only works with opus-mt model
