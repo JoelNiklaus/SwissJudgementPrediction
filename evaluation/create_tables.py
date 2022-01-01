@@ -3,9 +3,16 @@ from typing import List
 import pandas as pd
 import numpy as np
 
-from arguments.data_arguments import DataAugmentationType, LegalArea, OriginRegion
-from arguments.model_arguments import TrainType, LongInputBertType
-from utils.wandb_util import retrieve_results, pd_dp, update_runs
+from arguments.data_arguments import DataAugmentationType
+from arguments.model_arguments import TrainType
+from evaluation.experiments import (Experiment,
+                                    MonoLingualExperiment,
+                                    MultiLingualExperiment,
+                                    ZeroShotCrossLingualExperiment,
+                                    CrossDomainExperimentLegalAreas,
+                                    CrossDomainExperimentOriginRegions)
+from evaluation.result_cell import ResultCell
+from utils.wandb_util import retrieve_results
 
 import re
 
@@ -49,85 +56,6 @@ display_names = {
     DataAugmentationType.NO_AUGMENTATION: "no-aug",
     DataAugmentationType.TRANSLATION: "trans",
 }
-
-
-class Experiment:
-    name = "experiment"
-    num_random_seeds = 3
-    model_types = [LongInputBertType.HIERARCHICAL]
-    train_types = [TrainType.FINETUNE]
-    data_augmentation_types = [DataAugmentationType.NO_AUGMENTATION]
-    train_sub_datasets = ["None"]
-    train_langs = ['de', 'fr', 'it']
-    test_langs = ['de', 'fr', 'it']
-    sub_dataset_class = None
-    show_min = False
-    show_lang_aggs = True
-    show_sub_dataset_aggs = False
-    show_sub_dataset_instance_aggs = False
-    show_sub_dataset_lang_aggs = False
-    show_sub_dataset_instance_individuals = False
-    orient = 'index'
-
-
-class MonoLingualExperiment(Experiment):
-    name = "mono-lingual"
-    data_augmentation_types = [DataAugmentationType.TRANSLATION, DataAugmentationType.NO_AUGMENTATION]
-
-
-class MultiLingualExperiment(Experiment):
-    name = "multi-lingual"
-    train_types = [TrainType.FINETUNE, TrainType.ADAPTERS]
-    train_langs = ['de,fr,it']
-
-
-class ZeroShotCrossLingualExperiment(Experiment):
-    name = "zero-shot-cross-lingual"
-    train_types = [TrainType.FINETUNE, TrainType.ADAPTERS]
-    train_langs = ['de,fr', 'de,it', 'fr,it']
-
-
-class CrossDomainExperiment(Experiment):
-    show_min = True
-    data_augmentation_types = [DataAugmentationType.TRANSLATION, DataAugmentationType.NO_AUGMENTATION]
-    train_langs = ['de,fr,it', 'de', 'fr', 'it']
-    show_lang_aggs = False
-    show_sub_dataset_instance_aggs = True
-
-
-class CrossDomainExperimentLegalAreas(CrossDomainExperiment):
-    sub_dataset_class = "legal_area"
-    name = f"cross-domain-{sub_dataset_class}"
-    train_sub_datasets = [legal_area for legal_area in LegalArea]
-    train_sub_datasets.append("None")
-
-
-class CrossDomainExperimentOriginRegions(CrossDomainExperiment):
-    sub_dataset_class = "origin_region"
-    name = f"cross-domain-{sub_dataset_class}"
-    train_sub_datasets = [origin_region for origin_region in OriginRegion]
-    train_sub_datasets.append("None")
-
-
-class ResultCell:
-    def __init__(self, mean=0, std=0, min=0, connector='±', show_min=False, empty=False):
-        self.mean = mean
-        self.std = std
-        self.min = min
-        self.connector = connector
-        self.show_min = show_min
-        self.empty = empty  # we got now result
-        self.num_decimals = 1
-
-    def round(self, num):
-        """Convert a result from 0-1 to a number between 0 and 100 rounded to 2 decimals"""
-        return (num * 100).round(self.num_decimals)
-
-    def __str__(self):
-        if self.empty:
-            return "–"
-        mean_std = f"{self.round(self.mean)} {{\small {self.connector} {self.round(self.std)}}}"
-        return mean_std + (f" ({self.round(self.min)})" if self.show_min else "")
 
 
 def get_cols(columns, pattern):
@@ -242,7 +170,6 @@ def get_columns_for_display(experiment, table):
 
 def create_table(df: pd.DataFrame, experiment: Experiment):
     """Creates a table based on the results and the experiment config"""
-    print(experiment.name)
     table = {}
     for train_lang in experiment.train_langs:
         for train_type in experiment.train_types:
@@ -305,8 +232,11 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
         }
         table_df = table_df.rename(columns=rename_dict)
 
-    table_df.to_latex(f"experiment_{experiment.name}.tex", multicolumn_format="c", escape=False)
-    # table_df.to_html(f"experiment_{experiment.name}.html")
+    print(experiment.name)
+    if experiment.save_to_latex:
+        table_df.to_latex(f"experiment_{experiment.name}.tex", multicolumn_format="c", escape=False)
+    if experiment.save_to_html:
+        table_df.to_html(f"experiment_{experiment.name}.html")
     print(table_df.to_string())
 
 
