@@ -90,7 +90,7 @@ class ZeroShotCrossLingualExperiment(Experiment):
 class CrossDomainExperiment(Experiment):
     show_min = True
     data_augmentation_types = [DataAugmentationType.TRANSLATION, DataAugmentationType.NO_AUGMENTATION]
-    train_langs = ['de,fr,it']
+    train_langs = ['de,fr,it', 'de', 'fr', 'it']
     show_lang_aggs = False
     show_sub_dataset_instance_aggs = True
 
@@ -106,6 +106,7 @@ class CrossDomainExperimentOriginRegions(CrossDomainExperiment):
     sub_dataset_class = "origin_region"
     name = f"cross-domain-{sub_dataset_class}"
     train_sub_datasets = [origin_region for origin_region in OriginRegion]
+    train_sub_datasets.append("None")
 
 
 class ResultCell:
@@ -199,8 +200,49 @@ def aggregate_result_cells(result_cells: List[ResultCell]) -> ResultCell:
     return ResultCell(np.mean(means), np.std(means), np.min(means))
 
 
+def compute_averages(experiment, table):
+    """
+    Compute averages over languages and sub datasets not available in the get_row function
+    since they come from different models (NativeBERTs)
+    """
+    for row_name in table.keys():
+        if experiment.show_lang_aggs:
+            lang_result_cells = [table[row_name][f"lang-{test_lang}"] for test_lang in experiment.test_langs]
+            table[row_name][f"lang-avg"] = aggregate_result_cells(lang_result_cells)  # average of languages
+        if experiment.show_sub_dataset_aggs:
+            sd_result_cells = [table[row_name][f"sd-{test_lang}"] for test_lang in experiment.test_langs]
+            table[row_name][f"sd-avg"] = aggregate_result_cells(sd_result_cells)  # average of languages sub datasets
+    return table
+
+
+def get_columns_for_display(experiment, table):
+    """Compiles the columns that should be shown in the final output table"""
+    columns = next(iter(table.values())).keys()
+    # remove experiment.sub_dataset_class from sub_datasets to be removed
+    sub_datasets = [sd for sd in get_sub_datasets() if not sd == experiment.sub_dataset_class]
+    # remove columns that contain a sub dataset name
+    columns = [col for col in columns if not any(sd in col for sd in sub_datasets)]
+    if not experiment.show_lang_aggs:
+        # remove columns about languages (on the test set): e.g. lang-fr
+        columns = get_cols(columns, "lang-(de|fr|it|en|avg)$")
+    if not experiment.show_sub_dataset_aggs:
+        # remove columns that contain the sd string but no sub dataset: e.g. sd-de
+        columns = get_cols(columns, "sd-(de|fr|it|en|avg)$")
+    if not experiment.show_sub_dataset_instance_aggs:
+        # remove columns about sub datasets instance averages: e.g. sd-avg-legal_area-social_law
+        columns = get_cols(columns, "sd-avg-.+-.+$")
+    if not experiment.show_sub_dataset_lang_aggs:
+        # remove columns about sub datasets language averages: e.g. sd-de-legal_area
+        columns = get_cols(columns, "sd-(de|fr|it|en)-.+$")
+    if not experiment.show_sub_dataset_instance_individuals:
+        # remove columns about individual sub dataset instances: e.g. sd-de-legal_area-public_law
+        columns = get_cols(columns, "sd-(de|fr|it|en)-.+-.+$")
+    return columns
+
+
 def create_table(df: pd.DataFrame, experiment: Experiment):
     """Creates a table based on the results and the experiment config"""
+    print(experiment.name)
     table = {}
     for train_lang in experiment.train_langs:
         for train_type in experiment.train_types:
@@ -227,39 +269,10 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
                                 # add results per experiment row: merge dicts with same row name (e.g. NativeBERTs)
                                 table[row_name] = {**(table[row_name] if row_name in table else {}),
                                                    **(get_row(experiment, tsd_df))}
-
     # only compute lang-avg and sd-avg across languages here because NativeBERTs are not all available in get_row()
-    for row_name in table.keys():
-        lang_result_cells = [table[row_name][f"lang-{test_lang}"] for test_lang in experiment.test_langs]
-        table[row_name][f"lang-avg"] = aggregate_result_cells(lang_result_cells)  # average of languages
-        sd_result_cells = [table[row_name][f"sd-{test_lang}"] for test_lang in experiment.test_langs]
-        table[row_name][f"sd-avg"] = aggregate_result_cells(sd_result_cells)  # average of languages sub datasets
+    table = compute_averages(experiment, table)
 
-    columns = next(iter(table.values())).keys()
-    # remove experiment.sub_dataset_class from sub_datasets to be removed
-    sub_datasets = [sd for sd in get_sub_datasets() if not sd == experiment.sub_dataset_class]
-    # remove columns that contain a sub dataset name
-    columns = [col for col in columns if not any(sd in col for sd in sub_datasets)]
-
-    if not experiment.show_lang_aggs:
-        # remove columns about languages (on the test set): e.g. lang-fr
-        columns = get_cols(columns, "lang-(de|fr|it|en|avg)$")
-
-    if not experiment.show_sub_dataset_aggs:
-        # remove columns that contain the sd string but no sub dataset: e.g. sd-de
-        columns = get_cols(columns, "sd-(de|fr|it|en|avg)$")
-
-    if not experiment.show_sub_dataset_instance_aggs:
-        # remove columns about sub datasets instance averages: e.g. sd-avg-legal_area-social_law
-        columns = get_cols(columns, "sd-avg-.+-.+$")
-
-    if not experiment.show_sub_dataset_lang_aggs:
-        # remove columns about sub datasets language averages: e.g. sd-de-legal_area
-        columns = get_cols(columns, "sd-(de|fr|it|en)-.+$")
-
-    if not experiment.show_sub_dataset_instance_individuals:
-        # remove columns about individual sub dataset instances: e.g. sd-de-legal_area-public_law
-        columns = get_cols(columns, "sd-(de|fr|it|en)-.+-.+$")
+    columns = get_columns_for_display(experiment, table)
 
     # set result cell properties
     for row_name, row in table.items():
@@ -281,7 +294,14 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
             "lang-de": "German", "lang-fr": "French", "lang-it": "Italian", "lang-avg": "Average (Languages)",
             "sd-avg-legal_area-public_law": "Public Law", "sd-avg-legal_area-civil_law": "Civil Law",
             "sd-avg-legal_area-penal_law": "Penal Law", "sd-avg-legal_area-social_law": "Social Law",
-            "sd-avg-legal_area": "Average (Legal Areas)"
+            "sd-avg-legal_area": "Average (Legal Areas)",
+            "sd-avg-origin_region-Espace_Mittelland": "Espace Mittelland", "sd-avg-origin_region-Zürich": "Zürich",
+            "sd-avg-origin_region-Région lémanique": "Région lémanique",
+            "sd-avg-origin_region-Federation": "Federation",
+            "sd-avg-origin_region-Ticino": "Ticino", "sd-avg-origin_region-Central_Switzerland": "Central Switzerland",
+            "sd-avg-origin_region-Eastern_Switzerland": "Eastern Switzerland",
+            "sd-avg-origin_region-Northwestern_Switzerland": "Northwestern Switzerland",
+            "sd-avg-origin_region": "Average (Origin Regions)",
         }
         table_df = table_df.rename(columns=rename_dict)
 
@@ -292,11 +312,11 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
 
 project_name = "SwissJudgmentPredictionCrossLingualTransfer"
 # Important overwrite_cache as soon as there are new results
-original_df = retrieve_results(project_name, overwrite_cache=False)
+original_df = retrieve_results(project_name, overwrite_cache=True)
 
-# create_table(original_df, MonoLingualExperiment())
-# create_table(original_df, MultiLingualExperiment())
-# create_table(original_df, ZeroShotCrossLingualExperiment())
+create_table(original_df, MonoLingualExperiment())
+create_table(original_df, MultiLingualExperiment())
+create_table(original_df, ZeroShotCrossLingualExperiment())
 
 create_table(original_df, CrossDomainExperimentLegalAreas())
-# create_table(original_df, CrossDomainExperimentOriginRegions())
+create_table(original_df, CrossDomainExperimentOriginRegions())
