@@ -57,13 +57,14 @@ class LegalArea(str, SubDataset):
     # INSURANCE_LAW = "insurance_law"  # there is no evaluation set
     # OTHER = "other"  # cannot be used for training: too small
 
-    def get_dataset_column_name(self):
+    @classmethod
+    def get_dataset_column_name(cls):
         return "legal_area"
 
 
 class OriginRegion(str, SubDataset):
-    EASTERN_SWITZERLAND = "Eastern_Switzerland"
     ZURICH = "Zürich"
+    EASTERN_SWITZERLAND = "Eastern_Switzerland"
     CENTRAL_SWITZERLAND = "Central_Switzerland"
     NORTHWESTERN_SWITZERLAND = "Northwestern_Switzerland"
     ESPACE_MITTELLAND = "Espace_Mittelland"
@@ -71,7 +72,8 @@ class OriginRegion(str, SubDataset):
     TICINO = "Ticino"
     FEDERATION = "Federation"
 
-    def get_dataset_column_name(self):
+    @classmethod
+    def get_dataset_column_name(cls):
         return "origin_region"
 
 
@@ -104,7 +106,8 @@ class OriginCanton(str, SubDataset):
     JURA = "JU"
     CONFEDERATION = "CH"
 
-    def get_dataset_column_name(self):
+    @classmethod
+    def get_dataset_column_name(cls):
         return "origin_canton"
 
 

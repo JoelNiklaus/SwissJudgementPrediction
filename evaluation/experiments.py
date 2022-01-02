@@ -21,6 +21,7 @@ class Experiment:
     orient = 'index'
     save_to_latex = True
     save_to_html = False
+    metric = "f1_macro"
 
 
 class MonoLingualExperiment(Experiment):
@@ -49,14 +50,14 @@ class CrossDomainExperiment(Experiment):
 
 
 class CrossDomainExperimentLegalAreas(CrossDomainExperiment):
-    sub_dataset_class = "legal_area"
-    name = f"cross-domain-{sub_dataset_class}"
+    sub_dataset_class = LegalArea
+    name = f"cross-domain-{sub_dataset_class.get_dataset_column_name()}"
     train_sub_datasets = [legal_area for legal_area in LegalArea]
     train_sub_datasets.append("None")
 
 
 class CrossDomainExperimentOriginRegions(CrossDomainExperiment):
-    sub_dataset_class = "origin_region"
-    name = f"cross-domain-{sub_dataset_class}"
+    sub_dataset_class = OriginRegion
+    name = f"cross-domain-{sub_dataset_class.get_dataset_column_name()}"
     train_sub_datasets = [origin_region for origin_region in OriginRegion]
     train_sub_datasets.append("None")

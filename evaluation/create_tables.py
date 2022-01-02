@@ -3,7 +3,7 @@ from typing import List
 import pandas as pd
 import numpy as np
 
-from arguments.data_arguments import DataAugmentationType
+from arguments.data_arguments import DataAugmentationType, LegalArea, OriginRegion, SubDataset
 from arguments.model_arguments import TrainType
 from evaluation.experiments import (Experiment,
                                     MonoLingualExperiment,
@@ -55,6 +55,19 @@ display_names = {
     TrainType.ADAPTERS: "AD",
     DataAugmentationType.NO_AUGMENTATION: "no-aug",
     DataAugmentationType.TRANSLATION: "trans",
+    LegalArea.PUBLIC_LAW: "Public Law",
+    LegalArea.CIVIL_LAW: "Civil Law",
+    LegalArea.PENAL_LAW: "Penal Law",
+    LegalArea.SOCIAL_LAW: "Social Law",
+    OriginRegion.ZURICH: "Zürich",
+    OriginRegion.EASTERN_SWITZERLAND: "Eastern Switzerland",
+    OriginRegion.CENTRAL_SWITZERLAND: "Central Switzerland",
+    OriginRegion.NORTHWESTERN_SWITZERLAND: "Northwestern Switzerland",
+    OriginRegion.ESPACE_MITTELLAND: "Espace Mittelland",
+    OriginRegion.REGION_LEMANIQUE: "Région lémanique",
+    OriginRegion.TICINO: "Ticino",
+    OriginRegion.FEDERATION: "Federation",
+    'None': 'All',
 }
 
 
@@ -63,7 +76,7 @@ def get_cols(columns, pattern):
     return [col for col in columns if not re.match(pattern, col)]
 
 
-def get_row(experiment, lang_df, sub_datasets=None, metric="f1_macro"):
+def get_row(experiment, lang_df, sub_datasets=None):
     """get the results from sub datasets and the test sets of each language"""
     if sub_datasets is None:  # default argument for sub_datasets
         sub_datasets = get_sub_datasets()
@@ -71,18 +84,22 @@ def get_row(experiment, lang_df, sub_datasets=None, metric="f1_macro"):
     reg_dict = RegexDict(lang_df.iloc[0].summary)
     row_dict = {}
     for test_lang in experiment.test_langs:
-        matches = reg_dict.get_matching_keys(f'test/{test_lang}/{metric}')
+        matches = reg_dict.get_matching_keys(f'test/{test_lang}/{experiment.metric}')
         if next(matches, -1) == -1:  # if we did not find any of entries in that language
             continue  # skip it
         sd_class_result_cells = []
-        for sub_dataset in sub_datasets:
-            keys = reg_dict.get_matching_keys(f'{test_lang}/{sub_dataset}/.+/{metric}')
+        # we compute it for every sub dataset class so that we can get the average over all sub datasets later
+        for sub_dataset_class in sub_datasets:
+            sub_dataset = sub_dataset_class.get_dataset_column_name()
+            keys = reg_dict.get_matching_keys(f'{test_lang}/{sub_dataset}/.+/{experiment.metric}')
             sd_instance_result_cells = []
             for key in keys:
                 # compute average over all instances of a sub dataset ==> e.g. year: 2017, .., 2020
                 sd_instance_scores = lang_df.summary.apply(lambda x: x[key])  # series over random seeds
                 cell = ResultCell(sd_instance_scores.mean(), sd_instance_scores.std(), sd_instance_scores.min())
                 instance = key.split('/')[-2]
+                if instance == 'Région lémanique':
+                    instance = 'Region_Lemanique' # Dirty hack to rename some old unfortunate spelling
                 row_dict[f"sd-{test_lang}-{sub_dataset}-{instance}"] = cell
                 sd_instance_result_cells.append(cell)
             # compute average over all sub dataset classes of a language ==> e.g. de/year
@@ -91,32 +108,16 @@ def get_row(experiment, lang_df, sub_datasets=None, metric="f1_macro"):
         # compute average over all sub dataset languages ==> e.g. de
         row_dict[f"sd-{test_lang}"] = aggregate_result_cells(sd_class_result_cells)
 
-        lang_scores = lang_df.summary.apply(lambda x: x[f'test/{test_lang}/{metric}'])  # series over random seeds
+        # series over random seeds
+        lang_scores = lang_df.summary.apply(lambda x: x[f'test/{test_lang}/{experiment.metric}'])
         row_dict[f"lang-{test_lang}"] = ResultCell(lang_scores.mean(), lang_scores.std(),
                                                    lang_scores.min())  # add results per language
-
-    # compute average over sd instances over languages
-    for sub_dataset in sub_datasets:
-        keys = reg_dict.get_matching_keys(f'.+/{sub_dataset}/.+/{metric}')
-        instance_result_cells = []
-        for key in keys:
-            instance = key.split('/')[-2]
-            lang_result_cells = []
-            for test_lang in experiment.test_langs:
-                try:
-                    lang_result_cells.append(row_dict[f'sd-{test_lang}-{sub_dataset}-{instance}'])
-                # if one of the sub dataset instances was too small for a language so that we did not compute it
-                except KeyError:
-                    continue  # just ignore it
-            row_dict[f'sd-avg-{sub_dataset}-{instance}'] = aggregate_result_cells(lang_result_cells)
-            instance_result_cells.append(row_dict[f'sd-avg-{sub_dataset}-{instance}'])
-        row_dict[f'sd-avg-{sub_dataset}'] = aggregate_result_cells(instance_result_cells)
 
     return row_dict
 
 
 def get_sub_datasets():
-    return ['year', 'input_length', 'legal_area', 'origin_region', 'origin_canton']
+    return SubDataset.__subclasses__()
 
 
 def aggregate_result_cells(result_cells: List[ResultCell]) -> ResultCell:
@@ -140,6 +141,24 @@ def compute_averages(experiment, table):
         if experiment.show_sub_dataset_aggs:
             sd_result_cells = [table[row_name][f"sd-{test_lang}"] for test_lang in experiment.test_langs]
             table[row_name][f"sd-avg"] = aggregate_result_cells(sd_result_cells)  # average of languages sub datasets
+
+        if experiment.show_sub_dataset_instance_aggs:
+            # compute average over sd instances over languages
+            for sub_dataset_class in get_sub_datasets():
+                sub_dataset = sub_dataset_class.get_dataset_column_name()
+                instances = [instance.value for instance in sub_dataset_class]
+                instance_result_cells = []
+                for instance in instances:
+                    lang_result_cells = []
+                    for test_lang in experiment.test_langs:
+                        try:
+                            lang_result_cells.append(table[row_name][f'sd-{test_lang}-{sub_dataset}-{instance}'])
+                        # if one of the sub dataset instances was too small for a language so that we did not compute it
+                        except KeyError:
+                            continue  # just ignore it
+                    table[row_name][f'sd-avg-{sub_dataset}-{instance}'] = aggregate_result_cells(lang_result_cells)
+                    instance_result_cells.append(table[row_name][f'sd-avg-{sub_dataset}-{instance}'])
+                table[row_name][f'sd-avg-{sub_dataset}'] = aggregate_result_cells(instance_result_cells)
     return table
 
 
@@ -149,7 +168,7 @@ def get_columns_for_display(experiment, table):
     # remove experiment.sub_dataset_class from sub_datasets to be removed
     sub_datasets = [sd for sd in get_sub_datasets() if not sd == experiment.sub_dataset_class]
     # remove columns that contain a sub dataset name
-    columns = [col for col in columns if not any(sd in col for sd in sub_datasets)]
+    columns = [col for col in columns if not any(sd.get_dataset_column_name() in col for sd in sub_datasets)]
     if not experiment.show_lang_aggs:
         # remove columns about languages (on the test set): e.g. lang-fr
         columns = get_cols(columns, "lang-(de|fr|it|en|avg)$")
@@ -190,9 +209,13 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
                                 assert len(tsd_df.index) == experiment.num_random_seeds
 
                                 row_name = f"{display_names[model]} " \
-                                           f"{display_names[train_type]} " \
-                                           f"{display_names[data_augmentation_type]} " \
-                                           f"{train_sub_dataset}"
+                                           f"{display_names[train_type]} "
+                                # if only trained on one language call it "mono", if trained on several call it "multi"
+                                row_name += f"mono " if len(train_lang) == 2 else "multi "
+                                row_name += f"{display_names[data_augmentation_type]} " if len(
+                                    experiment.data_augmentation_types) > 1 else ""
+                                row_name += f"{display_names[train_sub_dataset]}" if len(
+                                    experiment.train_sub_datasets) > 1 else ""
                                 # add results per experiment row: merge dicts with same row name (e.g. NativeBERTs)
                                 table[row_name] = {**(table[row_name] if row_name in table else {}),
                                                    **(get_row(experiment, tsd_df))}
@@ -218,17 +241,17 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
     else:
         # rename for nicer display
         rename_dict = {
-            "lang-de": "German", "lang-fr": "French", "lang-it": "Italian", "lang-avg": "Average (Languages)",
+            "lang-de": "German", "lang-fr": "French", "lang-it": "Italian", "lang-avg": "Average",
             "sd-avg-legal_area-public_law": "Public Law", "sd-avg-legal_area-civil_law": "Civil Law",
             "sd-avg-legal_area-penal_law": "Penal Law", "sd-avg-legal_area-social_law": "Social Law",
-            "sd-avg-legal_area": "Average (Legal Areas)",
+            "sd-avg-legal_area": "Average",
             "sd-avg-origin_region-Espace_Mittelland": "Espace Mittelland", "sd-avg-origin_region-Zürich": "Zürich",
-            "sd-avg-origin_region-Région lémanique": "Région lémanique",
+            "sd-avg-origin_region-Region_Lemanique": "Région lémanique",
             "sd-avg-origin_region-Federation": "Federation",
             "sd-avg-origin_region-Ticino": "Ticino", "sd-avg-origin_region-Central_Switzerland": "Central Switzerland",
             "sd-avg-origin_region-Eastern_Switzerland": "Eastern Switzerland",
             "sd-avg-origin_region-Northwestern_Switzerland": "Northwestern Switzerland",
-            "sd-avg-origin_region": "Average (Origin Regions)",
+            "sd-avg-origin_region": "Average",
         }
         table_df = table_df.rename(columns=rename_dict)
 
@@ -242,7 +265,7 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
 
 project_name = "SwissJudgmentPredictionCrossLingualTransfer"
 # Important overwrite_cache as soon as there are new results
-original_df = retrieve_results(project_name, overwrite_cache=True)
+original_df = retrieve_results(project_name, overwrite_cache=False)
 
 create_table(original_df, MonoLingualExperiment())
 create_table(original_df, MultiLingualExperiment())
