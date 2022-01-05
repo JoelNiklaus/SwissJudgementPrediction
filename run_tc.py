@@ -31,7 +31,7 @@ from sklearn.metrics import (
     confusion_matrix,
     balanced_accuracy_score,
     roc_auc_score,
-    average_precision_score
+    average_precision_score, matthews_corrcoef
 )
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.utils import compute_class_weight
@@ -67,7 +67,7 @@ from root import DATA_DIR, AUGMENTED_DIR
 from utils.custom_callbacks import CustomWandbCallback
 from long import LongBert
 from arguments.data_arguments import DataArguments, ProblemType, SegmentationType, DataAugmentationType, LegalArea, \
-    OriginCanton, SubDataset, OriginRegion
+    OriginCanton, SubDataset, OriginRegion, Jurisdiction
 from hierarchical.hier_bert.configuration_hier_bert import HierBertConfig
 from hierarchical.hier_bert.modeling_hier_bert import HierBertForSequenceClassification
 from hierarchical.hier_camembert.configuration_hier_camembert import HierCamembertConfig
@@ -184,8 +184,9 @@ def main():
 
     def remove_unused_features(datasets):
         for i in range(len(datasets)):
-            columns_to_remove = ['chamber', 'origin_region', 'origin_canton', 'origin_court', 'origin_chamber',
-                                 'num_tokens_spacy', 'num_tokens_bert', 'legal_area', ]
+            columns_to_remove = ['chamber', 'num_tokens_spacy', 'num_tokens_bert',
+                                 'origin_region', 'origin_canton', 'origin_court', 'origin_chamber', 'legal_area',
+                                 'source_language', 'Unnamed: 0']
             for column in columns_to_remove:
                 if column in datasets[i].column_names:
                     datasets[i] = datasets[i].remove_columns(column)
@@ -221,10 +222,17 @@ def main():
             train_files = [(DATA_DIR / lang / 'train.csv').as_posix()]
             if data_args.data_augmentation_type:  # if it is not None
                 path = AUGMENTED_DIR / data_args.data_augmentation_type / lang
+                if data_args.jurisdiction == Jurisdiction.INDIA:
+                    path = path / Jurisdiction.INDIA.value  # only take the indian data
+                    train_files = []  # remove the main train files
                 train_files.extend(glob.glob(f"{path}/*.csv"))  # add all files inside this path
-            train_dataset = load_dataset("csv", data_files={"train": train_files})['train']
-            train_datasets.append(train_dataset)
-        if 'en' in model_args.train_languages:  # if we train with the Indian dataset
+                if data_args.jurisdiction == Jurisdiction.BOTH:
+                    train_files.extend(glob.glob(f"{path / Jurisdiction.INDIA.value}/*.csv"))  # add the indian data
+            # load files separately so we can remove unused features before merging into one
+            for train_file in train_files:
+                train_datasets.append(load_dataset("csv", data_files={"train": train_file})['train'])
+        # if we train with the Indian dataset
+        if 'en' in model_args.train_languages or data_args.jurisdiction in [Jurisdiction.INDIA, Jurisdiction.BOTH]:
             train_datasets = remove_unused_features(train_datasets)  # we need to remove some columns, so we can merge
         train_dataset = concatenate_datasets(train_datasets)  # we want to train on all datasets at the same time
         train_dataset = filter_by_sub_datasets(train_dataset)
@@ -576,6 +584,7 @@ def main():
         average_precision = average_precision_score(labels, positive_probs)
         roc_auc = roc_auc_score(labels, positive_probs)
         balanced_accuracy = balanced_accuracy_score(labels, preds)
+        mcc = matthews_corrcoef(labels, preds)
         # macro averaging is a better evaluation metric for imbalanced label distributions
         precision, recall, f1_macro, _ = precision_recall_fscore_support(labels, preds, average='macro')
         return OrderedDict({
@@ -585,6 +594,7 @@ def main():
             'balanced_accuracy': balanced_accuracy,
             'average_precision': average_precision,
             'roc_auc': roc_auc,
+            'mcc': mcc,
         })
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.

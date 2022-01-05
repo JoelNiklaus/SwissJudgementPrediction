@@ -114,6 +114,7 @@ class OriginCanton(str, SubDataset):
 class Jurisdiction(str, ExplicitEnum):
     SWITZERLAND = "switzerland"
     INDIA = "india"
+    BOTH = "both"
 
 
 @dataclass
@@ -177,6 +178,9 @@ class DataArguments:
     )
     data_augmentation_type: DataAugmentationType = field(
         default=DataAugmentationType.NO_AUGMENTATION, metadata={"help": "What type of data augmentation to use"},
+    )
+    jurisdiction: Jurisdiction = field(
+        default=Jurisdiction.SWITZERLAND, metadata={"help": "Which jurisdiction to include data from"},
     )
     train_sub_datasets: Optional[str] = field(
         default=None,
