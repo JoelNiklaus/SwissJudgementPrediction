@@ -1,8 +1,9 @@
 class ResultCell:
-    def __init__(self, mean=0, std=0, min=0, connector='±', show_min=False, empty=False):
+    def __init__(self, mean=0, std=0, min=0, support=None, connector='±', show_min=False, empty=False):
         self.mean = mean
         self.std = std
         self.min = min
+        self.support = support  # how many samples we had (can be used for weighted averages)
         self.connector = connector
         self.show_min = show_min
         self.empty = empty  # we got now result

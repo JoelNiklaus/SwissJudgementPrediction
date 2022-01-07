@@ -96,10 +96,15 @@ def get_row(experiment, lang_df, sub_datasets=None):
             for key in keys:
                 # compute average over all instances of a sub dataset ==> e.g. year: 2017, .., 2020
                 sd_instance_scores = lang_df.summary.apply(lambda x: x[key])  # series over random seeds
-                cell = ResultCell(sd_instance_scores.mean(), sd_instance_scores.std(), sd_instance_scores.min())
+                support_key = key.replace(experiment.metric, "support")
+                sd_instance_supports = lang_df.summary.apply(lambda x: x[support_key])
+                # the number of samples should always be the same
+                assert int(sd_instance_supports.mean()) == sd_instance_supports.iloc[0]
+                cell = ResultCell(sd_instance_scores.mean(), sd_instance_scores.std(), sd_instance_scores.min(),
+                                  sd_instance_supports.iloc[0])
                 instance = key.split('/')[-2]
                 if instance == 'Région lémanique':
-                    instance = 'Region_Lemanique' # Dirty hack to rename some old unfortunate spelling
+                    instance = 'Region_Lemanique'  # Dirty hack to rename some old unfortunate spelling
                 row_dict[f"sd-{test_lang}-{sub_dataset}-{instance}"] = cell
                 sd_instance_result_cells.append(cell)
             # compute average over all sub dataset classes of a language ==> e.g. de/year
@@ -110,8 +115,11 @@ def get_row(experiment, lang_df, sub_datasets=None):
 
         # series over random seeds
         lang_scores = lang_df.summary.apply(lambda x: x[f'test/{test_lang}/{experiment.metric}'])
+        lang_supports = lang_df.summary.apply(lambda x: x[f'test/{test_lang}/samples'])
+        # the number of samples should always be the same
+        assert int(lang_supports.mean()) == lang_supports.iloc[0]
         row_dict[f"lang-{test_lang}"] = ResultCell(lang_scores.mean(), lang_scores.std(),
-                                                   lang_scores.min())  # add results per language
+                                                   lang_scores.min(), lang_supports.iloc[0])  # add results per language
 
     return row_dict
 
@@ -120,13 +128,18 @@ def get_sub_datasets():
     return SubDataset.__subclasses__()
 
 
-def aggregate_result_cells(result_cells: List[ResultCell]) -> ResultCell:
+def aggregate_result_cells(result_cells: List[ResultCell], use_weighted_average=False) -> ResultCell:
     """aggregates a list of result cells into another result cell"""
     result_cells = [rc for rc in result_cells if not rc.empty]  # remove empty result cells
     if len(result_cells) == 0:  # we might get that for en where sub_datasets are missing
         return ResultCell(empty=True)
     means = [rc.mean for rc in result_cells]
-    return ResultCell(np.mean(means), np.std(means), np.min(means))
+    mean = np.mean(means)
+    if use_weighted_average:
+        supports = [rc.support for rc in result_cells]
+        assert all(support for support in supports)  # we need a support for that
+        mean = np.average(means, weights=supports)  # overwrite mean with weighted average
+    return ResultCell(mean, np.std(means), np.min(means))
 
 
 def compute_averages(experiment, table):
@@ -156,7 +169,8 @@ def compute_averages(experiment, table):
                         # if one of the sub dataset instances was too small for a language so that we did not compute it
                         except KeyError:
                             continue  # just ignore it
-                    table[row_name][f'sd-avg-{sub_dataset}-{instance}'] = aggregate_result_cells(lang_result_cells)
+                    result_cell = aggregate_result_cells(lang_result_cells, experiment.use_support_weighted_average)
+                    table[row_name][f'sd-avg-{sub_dataset}-{instance}'] = result_cell
                     instance_result_cells.append(table[row_name][f'sd-avg-{sub_dataset}-{instance}'])
                 table[row_name][f'sd-avg-{sub_dataset}'] = aggregate_result_cells(instance_result_cells)
     return table

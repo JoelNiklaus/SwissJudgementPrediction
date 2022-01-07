@@ -22,6 +22,8 @@ class Experiment:
     save_to_latex = True
     save_to_html = False
     metric = "f1_macro"
+    # whether or not to use support to weight the averages (if False: each language has equal weight)
+    use_support_weighted_average = False
 
 
 class MonoLingualExperiment(Experiment):
@@ -47,7 +49,7 @@ class CrossDomainExperiment(Experiment):
     train_langs = ['de,fr,it', 'de', 'fr', 'it']
     show_lang_aggs = False
     show_sub_dataset_instance_aggs = True
-
+    use_support_weighted_average = True
 
 class CrossDomainExperimentLegalAreas(CrossDomainExperiment):
     sub_dataset_class = LegalArea
