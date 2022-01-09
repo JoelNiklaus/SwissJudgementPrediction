@@ -164,6 +164,7 @@ CMD="python run_tc.py
   --max_segments $MAX_SEGMENTS
   --max_seg_len $MAX_SEG_LEN
   --data_augmentation_type $DATA_AUGMENTATION_TYPE
+  --jurisdiction switzerland
   --num_train_epochs $NUM_EPOCHS
   --load_best_model_at_end
   --metric_for_best_model eval_f1_macro

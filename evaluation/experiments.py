@@ -1,4 +1,4 @@
-from arguments.data_arguments import DataAugmentationType, LegalArea, OriginRegion
+from arguments.data_arguments import DataAugmentationType, LegalArea, OriginRegion, Jurisdiction
 from arguments.model_arguments import LongInputBertType, TrainType
 
 
@@ -8,6 +8,7 @@ class Experiment:
     model_types = [LongInputBertType.HIERARCHICAL]
     train_types = [TrainType.FINETUNE]
     data_augmentation_types = [DataAugmentationType.NO_AUGMENTATION]
+    jurisdictions = [Jurisdiction.SWITZERLAND]
     train_sub_datasets = ["None"]
     train_langs = ['de', 'fr', 'it']
     test_langs = ['de', 'fr', 'it']
@@ -34,6 +35,7 @@ class MonoLingualExperiment(Experiment):
 class MultiLingualExperiment(Experiment):
     name = "multi-lingual"
     train_types = [TrainType.FINETUNE, TrainType.ADAPTERS]
+    data_augmentation_types = [DataAugmentationType.TRANSLATION, DataAugmentationType.NO_AUGMENTATION]
     train_langs = ['de,fr,it']
 
 
@@ -44,12 +46,13 @@ class ZeroShotCrossLingualExperiment(Experiment):
 
 
 class CrossDomainExperiment(Experiment):
-    show_min = True
+    show_min = False
     data_augmentation_types = [DataAugmentationType.TRANSLATION, DataAugmentationType.NO_AUGMENTATION]
     train_langs = ['de,fr,it', 'de', 'fr', 'it']
     show_lang_aggs = False
     show_sub_dataset_instance_aggs = True
     use_support_weighted_average = True
+
 
 class CrossDomainExperimentLegalAreas(CrossDomainExperiment):
     sub_dataset_class = LegalArea
@@ -63,3 +66,11 @@ class CrossDomainExperimentOriginRegions(CrossDomainExperiment):
     name = f"cross-domain-{sub_dataset_class.get_dataset_column_name()}"
     train_sub_datasets = [origin_region for origin_region in OriginRegion]
     train_sub_datasets.append("None")
+
+
+class CrossJurisdictionExperiment(Experiment):
+    name = "cross-jurisdiction"
+    data_augmentation_types = [DataAugmentationType.TRANSLATION]
+    jurisdictions = [Jurisdiction.SWITZERLAND, Jurisdiction.INDIA, Jurisdiction.BOTH]
+    train_langs = ['de,fr,it']
+    test_langs = ['de', 'fr', 'it', 'en']

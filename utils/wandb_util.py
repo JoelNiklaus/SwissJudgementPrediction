@@ -1,6 +1,7 @@
 import pandas as pd
 import wandb
 
+from arguments.data_arguments import Jurisdiction
 from root import ROOT_DIR
 
 
@@ -10,8 +11,8 @@ def update_runs(project_name):
     runs = api.runs(project_name)
     for run in runs:
         print(run.config)
-        if run.config["data_args"]['train_sub_datasets'] == "False":
-            run.config["data_args"]["train_sub_datasets"] = "None"
+        if 'jurisdiction' not in run.config["data_args"].keys():
+            run.config["data_args"]["jurisdiction"] = Jurisdiction.SWITZERLAND
             run.update()
 
 

@@ -3,14 +3,14 @@ from typing import List
 import pandas as pd
 import numpy as np
 
-from arguments.data_arguments import DataAugmentationType, LegalArea, OriginRegion, SubDataset
+from arguments.data_arguments import DataAugmentationType, LegalArea, OriginRegion, SubDataset, Jurisdiction
 from arguments.model_arguments import TrainType
 from evaluation.experiments import (Experiment,
                                     MonoLingualExperiment,
                                     MultiLingualExperiment,
                                     ZeroShotCrossLingualExperiment,
                                     CrossDomainExperimentLegalAreas,
-                                    CrossDomainExperimentOriginRegions)
+                                    CrossDomainExperimentOriginRegions, CrossJurisdictionExperiment)
 from evaluation.result_cell import ResultCell
 from utils.wandb_util import retrieve_results
 
@@ -68,6 +68,9 @@ display_names = {
     OriginRegion.TICINO: "Ticino",
     OriginRegion.FEDERATION: "Federation",
     'None': 'All',
+    Jurisdiction.SWITZERLAND: "CH",
+    Jurisdiction.INDIA: "IN",
+    Jurisdiction.BOTH: "CH+IN",
 }
 
 
@@ -94,10 +97,13 @@ def get_row(experiment, lang_df, sub_datasets=None):
             keys = reg_dict.get_matching_keys(f'{test_lang}/{sub_dataset}/.+/{experiment.metric}')
             sd_instance_result_cells = []
             for key in keys:
-                # compute average over all instances of a sub dataset ==> e.g. year: 2017, .., 2020
-                sd_instance_scores = lang_df.summary.apply(lambda x: x[key])  # series over random seeds
-                support_key = key.replace(experiment.metric, "support")
-                sd_instance_supports = lang_df.summary.apply(lambda x: x[support_key])
+                try:
+                    # compute average over all instances of a sub dataset ==> e.g. year: 2017, .., 2020
+                    sd_instance_scores = lang_df.summary.apply(lambda x: x[key])  # series over random seeds
+                    support_key = key.replace(experiment.metric, "support")
+                    sd_instance_supports = lang_df.summary.apply(lambda x: x[support_key])
+                except KeyError:
+                    continue  # probably we wanted to retrieve something like 'de/origin_region/Region_Lemanique/f1_macro' (there are no German cases in Region_Lemanique, therefore we don't have any f1_macro)
                 # the number of samples should always be the same
                 assert int(sd_instance_supports.mean()) == sd_instance_supports.iloc[0]
                 cell = ResultCell(sd_instance_scores.mean(), sd_instance_scores.std(), sd_instance_scores.min(),
@@ -201,8 +207,9 @@ def get_columns_for_display(experiment, table):
     return columns
 
 
-def create_table(df: pd.DataFrame, experiment: Experiment):
-    """Creates a table based on the results and the experiment config"""
+def fill_table(df, experiment):
+    """Fills the table with the individual results"""
+    # TODO maybe add another config param for experiment name for easy filtering
     table = {}
     for train_lang in experiment.train_langs:
         for train_type in experiment.train_types:
@@ -210,7 +217,7 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
                 for model in get_bert_models(train_lang):
                     run_name = f'{train_type}-{model}-{model_type}-{train_lang}-'
                     lang_df = df[df.name.str.contains(run_name)]  # filter by run_name
-                    # TODO maybe add another config param for experiment name for easy filtering
+
                     for data_augmentation_type in experiment.data_augmentation_types:
                         filter = lambda x: x['data_args']['data_augmentation_type'] == data_augmentation_type
                         da_df = lang_df[lang_df.config.apply(filter)]  # create data_augmentation_df
@@ -218,21 +225,35 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
                         for train_sub_dataset in experiment.train_sub_datasets:
                             filter = lambda x: x['data_args']['train_sub_datasets'] == train_sub_dataset
                             tsd_df = da_df[da_df.config.apply(filter)]  # create train_sub_datasets_df
-                            if len(tsd_df.index) > 0:
-                                # if this fails, there might be some failed/crashed runs which need to be deleted
-                                assert len(tsd_df.index) == experiment.num_random_seeds
 
-                                row_name = f"{display_names[model]} " \
-                                           f"{display_names[train_type]} "
-                                # if only trained on one language call it "mono", if trained on several call it "multi"
-                                row_name += f"mono " if len(train_lang) == 2 else "multi "
-                                row_name += f"{display_names[data_augmentation_type]} " if len(
-                                    experiment.data_augmentation_types) > 1 else ""
-                                row_name += f"{display_names[train_sub_dataset]}" if len(
-                                    experiment.train_sub_datasets) > 1 else ""
-                                # add results per experiment row: merge dicts with same row name (e.g. NativeBERTs)
-                                table[row_name] = {**(table[row_name] if row_name in table else {}),
-                                                   **(get_row(experiment, tsd_df))}
+                            for jurisdiction in experiment.jurisdictions:
+                                filter = lambda x: x['data_args']['jurisdiction'] == jurisdiction
+                                j_df = tsd_df[tsd_df.config.apply(filter)]  # create jurisdiction_df
+
+                                if len(j_df.index) > 0:
+                                    # if this fails, there might be some failed/crashed runs which need to be deleted
+                                    assert len(j_df.index) == experiment.num_random_seeds
+
+                                    row_name = f"{display_names[model]} " \
+                                               f"{display_names[train_type]} "
+                                    # if only trained on one language call it "mono", if trained on several call it "multi"
+                                    row_name += f"mono " if len(train_lang) == 2 else "multi "
+                                    row_name += f"{display_names[data_augmentation_type]} " if len(
+                                        experiment.data_augmentation_types) > 1 else ""
+                                    row_name += f"{display_names[train_sub_dataset]} " if len(
+                                        experiment.train_sub_datasets) > 1 else ""
+                                    row_name += f"{display_names[jurisdiction]} " if len(
+                                        experiment.jurisdictions) > 1 else ""
+                                    # add results per experiment row: merge dicts with same row name (e.g. NativeBERTs)
+                                    table[row_name] = {**(table[row_name] if row_name in table else {}),
+                                                       **(get_row(experiment, j_df))}
+    return table
+
+
+def create_table(df: pd.DataFrame, experiment: Experiment):
+    """Creates a table based on the results and the experiment config"""
+    table = fill_table(df, experiment)
+
     # only compute lang-avg and sd-avg across languages here because NativeBERTs are not all available in get_row()
     table = compute_averages(experiment, table)
 
@@ -287,3 +308,5 @@ create_table(original_df, ZeroShotCrossLingualExperiment())
 
 create_table(original_df, CrossDomainExperimentLegalAreas())
 create_table(original_df, CrossDomainExperimentOriginRegions())
+
+create_table(original_df, CrossJurisdictionExperiment())
