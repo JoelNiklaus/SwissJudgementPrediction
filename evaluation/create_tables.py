@@ -9,8 +9,10 @@ from evaluation.experiments import (Experiment,
                                     MonoLingualExperiment,
                                     MultiLingualExperiment,
                                     ZeroShotCrossLingualExperiment,
-                                    CrossDomainExperimentLegalAreas,
-                                    CrossDomainExperimentOriginRegions, CrossJurisdictionExperiment)
+                                    CrossDomainLegalAreasExperiment,
+                                    CrossDomainOriginRegionsExperiment,
+                                    CrossJurisdictionExperiment,
+                                    CrossJurisdictionLegalAreasExperiment)
 from evaluation.result_cell import ResultCell
 from utils.wandb_util import retrieve_results
 
@@ -42,6 +44,10 @@ def get_bert_models(language: str, with_xlm_r=True, with_m_bert=False):
     if language == 'en':
         models.append("roberta-base")
     return models
+
+
+def isNativeBert(model_name):
+    return display_names[model_name] == "NativeBERT"
 
 
 display_names = {
@@ -298,15 +304,17 @@ def create_table(df: pd.DataFrame, experiment: Experiment):
     print(table_df.to_string())
 
 
-project_name = "SwissJudgmentPredictionCrossLingualTransfer"
-# Important overwrite_cache as soon as there are new results
-original_df = retrieve_results(project_name, overwrite_cache=False)
+if __name__ == '__main__':
+    project_name = "SwissJudgmentPredictionCrossLingualTransfer"
+    # Important overwrite_cache as soon as there are new results
+    original_df = retrieve_results(project_name, overwrite_cache=False)
 
-create_table(original_df, MonoLingualExperiment())
-create_table(original_df, MultiLingualExperiment())
-create_table(original_df, ZeroShotCrossLingualExperiment())
+    create_table(original_df, MonoLingualExperiment())
+    create_table(original_df, MultiLingualExperiment())
+    create_table(original_df, ZeroShotCrossLingualExperiment())
 
-create_table(original_df, CrossDomainExperimentLegalAreas())
-create_table(original_df, CrossDomainExperimentOriginRegions())
+    create_table(original_df, CrossDomainLegalAreasExperiment())
+    create_table(original_df, CrossDomainOriginRegionsExperiment())
 
-create_table(original_df, CrossJurisdictionExperiment())
+    create_table(original_df, CrossJurisdictionExperiment())
+    create_table(original_df, CrossJurisdictionLegalAreasExperiment())

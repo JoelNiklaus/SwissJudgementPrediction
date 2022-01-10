@@ -54,14 +54,14 @@ class CrossDomainExperiment(Experiment):
     use_support_weighted_average = True
 
 
-class CrossDomainExperimentLegalAreas(CrossDomainExperiment):
+class CrossDomainLegalAreasExperiment(CrossDomainExperiment):
     sub_dataset_class = LegalArea
     name = f"cross-domain-{sub_dataset_class.get_dataset_column_name()}"
     train_sub_datasets = [legal_area for legal_area in LegalArea]
     train_sub_datasets.append("None")
 
 
-class CrossDomainExperimentOriginRegions(CrossDomainExperiment):
+class CrossDomainOriginRegionsExperiment(CrossDomainExperiment):
     sub_dataset_class = OriginRegion
     name = f"cross-domain-{sub_dataset_class.get_dataset_column_name()}"
     train_sub_datasets = [origin_region for origin_region in OriginRegion]
@@ -74,3 +74,13 @@ class CrossJurisdictionExperiment(Experiment):
     jurisdictions = [Jurisdiction.SWITZERLAND, Jurisdiction.INDIA, Jurisdiction.BOTH]
     train_langs = ['de,fr,it']
     test_langs = ['de', 'fr', 'it', 'en']
+
+
+class CrossJurisdictionLegalAreasExperiment(CrossDomainLegalAreasExperiment, CrossJurisdictionExperiment):
+    sub_dataset_class = LegalArea
+    name = f"cross-jurisdiction-cross-domain-{sub_dataset_class.get_dataset_column_name()}"
+    data_augmentation_types = [DataAugmentationType.TRANSLATION]
+    jurisdictions = [Jurisdiction.SWITZERLAND, Jurisdiction.INDIA, Jurisdiction.BOTH]
+    train_langs = ['de,fr,it']
+    test_langs = ['de', 'fr', 'it', 'en']
+    train_sub_datasets = ["None"]
