@@ -95,6 +95,9 @@ faulthandler.enable()
 logger.warning("This script only supports PyTorch models!")
 
 
+# TODO save all predictions to wandb so we can do significance testing later on with aso
+# TODO remove special run-names because in the end, we always filter by model/data/training arguments in wandb ==> so the old models are not overwritten (however, then they are also hard to find)
+
 def main():
     # See all possible arguments in src/transformers/training_args.py or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
@@ -182,11 +185,14 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    def remove_unused_features(datasets):
+    def remove_unused_features(datasets, remove_original_cols, remove_augmented_cols=True):
+        columns_to_remove = []
+        if remove_original_cols:
+            columns_to_remove.extend(['chamber', 'num_tokens_spacy', 'num_tokens_bert',
+                                      'origin_region', 'origin_canton', 'origin_court', 'origin_chamber', 'legal_area'])
+        if remove_augmented_cols:
+            columns_to_remove.extend(['source_language', 'Unnamed: 0'])
         for i in range(len(datasets)):
-            columns_to_remove = ['chamber', 'num_tokens_spacy', 'num_tokens_bert',
-                                 'origin_region', 'origin_canton', 'origin_court', 'origin_chamber', 'legal_area',
-                                 'source_language', 'Unnamed: 0']
             for column in columns_to_remove:
                 if column in datasets[i].column_names:
                     datasets[i] = datasets[i].remove_columns(column)
@@ -220,7 +226,8 @@ def main():
     if training_args.do_train:
         for lang in model_args.train_languages:
             train_files = [(DATA_DIR / lang / 'train.csv').as_posix()]
-            if data_args.data_augmentation_type:  # if it is not None
+            if data_args.data_augmentation_type in [DataAugmentationType.TRANSLATION,
+                                                    DataAugmentationType.BACK_TRANSLATION]:
                 path = AUGMENTED_DIR / data_args.data_augmentation_type / lang
                 if data_args.jurisdiction == Jurisdiction.INDIA:
                     path = path / Jurisdiction.INDIA.value  # only take the indian data
@@ -232,18 +239,26 @@ def main():
             for train_file in train_files:
                 train_datasets.append(load_dataset("csv", data_files={"train": train_file})['train'])
         # if we train with the Indian dataset
-        if 'en' in model_args.train_languages or data_args.jurisdiction in [Jurisdiction.INDIA, Jurisdiction.BOTH]:
-            train_datasets = remove_unused_features(train_datasets)  # we need to remove some columns, so we can merge
+        remove_original_cols = 'en' in model_args.train_languages \
+                               or data_args.jurisdiction in [Jurisdiction.INDIA, Jurisdiction.BOTH]
+        # we need to remove some columns, so we can merge
+        train_datasets = remove_unused_features(train_datasets, remove_original_cols)
         train_dataset = concatenate_datasets(train_datasets)  # we want to train on all datasets at the same time
         train_dataset = filter_by_sub_datasets(train_dataset)
+
+        # Using the Indian cases only in the Swiss train set period (not older ones).
+        # train_dataset = train_dataset.filter(lambda item: int(item['year']) >= 2000)
+        # TODO Using the Indian cases that are up to 2048 tokens.
 
     if training_args.do_eval:
         for lang in model_args.train_languages:
             eval_path = (DATA_DIR / lang / 'val.csv').as_posix()
             eval_dataset = load_dataset("csv", data_files={"validation": eval_path})['validation']
             eval_datasets.append(eval_dataset)
-        if 'en' in model_args.train_languages:  # if we train with the Indian dataset
-            eval_datasets = remove_unused_features(eval_datasets)  # we need to remove some columns, so we can merge
+        # if we train with the Indian dataset
+        remove_original_cols = 'en' in model_args.train_languages
+        # we need to remove some columns, so we can merge
+        eval_datasets = remove_unused_features(eval_datasets, remove_original_cols)
         eval_dataset = concatenate_datasets(eval_datasets)  # we want to evaluate on all datasets at the same time
         eval_dataset = filter_by_sub_datasets(eval_dataset)
 
@@ -356,6 +371,7 @@ def main():
         #    id2label=label_dict['id2label'],
         # )
 
+        # Future work: Try different learning rates for base encoder and segment encoder
         if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
             if config.model_type == 'bert':
                 config_class = HierBertConfig
