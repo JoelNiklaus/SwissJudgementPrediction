@@ -74,8 +74,10 @@ OVERWRITE_CACHE=True                # IMPORTANT: Make sure to set this to true a
 # 0.1/0.2 seemed to be the best in the setting adapters-xlm-roberta-base-hierarchical de,fr to it
 [ "$LABEL_IMBALANCE_METHOD" == "class_weights" ] && LABEL_SMOOTHING_FACTOR=0.0 || LABEL_SMOOTHING_FACTOR=0.1
 
-# Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5}, https://openreview.net/pdf?id=nzpLWnVAyah: RoBERTa apparently has a lot of instability with lr 3e-5
-[ "$TRAIN_TYPE" == "bitfit" ] && LR=5e-4 || LR=1e-5 # lower lr for adapters and finetune
+# Devlin et al. suggest somewhere in {1e-5, 2e-5, 3e-5, 4e-5, 5e-5},
+[ "$TRAIN_TYPE" == "bitfit" ] && LR=5e-4   # 5e-4 higher learning rate for bitfit because there are less parameters
+[ "$TRAIN_TYPE" == "adapters" ] && LR=5e-5 # 5e-5 somehow this is better for adapters. Just don't ask why!
+[ "$TRAIN_TYPE" == "finetune" ] && LR=1e-5 # 1e-5 https://openreview.net/pdf?id=nzpLWnVAyah: RoBERTa apparently has a lot of instability with lr 3e-5
 
 # Batch size for RTX 3090 for
 # Distilbert: 32
