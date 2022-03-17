@@ -11,6 +11,7 @@ Run this script from the root folder like this: python -m data_augmentation.tran
     - https://huggingface.co/Helsinki-NLP/opus-mt-fr-de
     - https://huggingface.co/Helsinki-NLP/opus-tatoeba-fr-it
 (d) - use easynmnt
+(e) - deep-translator: https://deep-translator.readthedocs.io/en/latest/README.html
 """
 from root import DATA_DIR, TRANSLATION_DIR, BACK_TRANSLATION_DIR
 from pathlib import Path
@@ -92,20 +93,20 @@ def back_translate(source_lang, target_langs, debug=False) -> None:
 if __name__ == '__main__':
     debug = False
 
-    source_langs = ['de', 'fr']
-    target_lang = 'it'
+    source_langs = ['de', 'fr', 'it']
+    target_lang = 'en'
     translate(source_langs, target_lang, debug=debug)
 
-    # TODO find reason for a number of languages
     source_lang = 'it'
-    target_langs_basic = ['de', 'fr', 'en', 'es', 'pt']
-    opus_mt_langs = ['de', 'fr', 'es', 'en', 'he', 'ar', 'bg', 'ca', 'eo', 'is', 'lt', 'ms', 'uk',
-                     'vi', ]  # supported by opus-mt
+    corpus_langs = ['de', 'fr', 'it']
+
+    target_langs_basic = ['de', 'fr', 'en', 'es', 'pt', ]
+    opus_mt_langs = ['de', 'fr', 'es', 'en', 'he', 'ar', 'bg', 'ca', 'eo', 'is', 'lt', 'ms', 'uk', 'vi', ]
     m2m_100_langs = ['af', 'am', 'ar', 'ast', 'az', 'ba', 'be', 'bg', 'bn', 'br', 'bs', 'ca', 'ceb', 'cs', 'cy', 'da',
                      'de', 'el', 'en', 'es', 'et', 'fa', 'ff', 'fi', 'fr', 'fy', 'ga', 'gd', 'gl', 'gu', 'ha', 'he',
                      'hi', 'hr', 'ht', 'hu', 'hy', 'id', 'ig', 'ilo', 'is', 'it', 'ja', 'jv', 'ka', 'kk', 'km', 'kn',
                      'ko', 'lb', 'lg', 'ln', 'lo', 'lt', 'lv', 'mg', 'mk', 'ml', 'mn', 'mr', 'ms', 'my', 'ne', 'nl',
                      'no', 'ns', 'oc', 'or', 'pa', 'pl', 'ps', 'pt', 'ro', 'ru', 'sd', 'si', 'sk', 'sl', 'so', 'sq',
                      'sr', 'ss', 'su', 'sv', 'sw', 'ta', 'th', 'tl', 'tn', 'tr', 'uk', 'ur', 'uz', 'vi', 'wo', 'xh',
-                     'yi', 'yo', 'zh', 'zu']  # supported by m2m_100
+                     'yi', 'yo', 'zh', 'zu', ]  # supported by m2m_100
     back_translate(source_lang, target_langs_basic, debug=debug)
