@@ -344,18 +344,6 @@ def main():
                 model.load_adapter(folder, load_as=data_args.task_name)
 
     def model_init():
-        if model_args.use_pretrained_model:
-            model = AutoModelForSequenceClassification.from_pretrained(
-                model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
-                config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
-            )
-        else:
-            model = AutoModelForSequenceClassification.from_config(config)
-
         # TODO use more flexible AutoModelWithHeads for better adapter support
         # model = AutoModelWithHeads.from_pretrained(
         #    model_args.model_name_or_path,
@@ -371,6 +359,9 @@ def main():
         #    id2label=label_dict['id2label'],
         # )
 
+        model_class = AutoModelForSequenceClassification
+        configuration = config
+
         # Future work: Try different learning rates for base encoder and segment encoder
         if model_args.long_input_bert_type == LongInputBertType.HIERARCHICAL:
             if config.model_type == 'bert':
@@ -385,20 +376,24 @@ def main():
             if config.model_type == 'camembert':
                 config_class = HierCamembertConfig
                 model_class = HierCamembertForSequenceClassification
+            configuration = config_class(**config.to_dict())
 
-            hier_bert_config = config_class(**config.to_dict())
-            model = model_class.from_pretrained(model_args.model_name_or_path, config=hier_bert_config)
+        if model_args.use_pretrained_model:
+            model = model_class.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=configuration,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
+        else:
+            model = model_class.from_config(configuration)
 
         if model_args.long_input_bert_type == LongInputBertType.LONG:
             model.base_model = LongBert.resize_position_embeddings(model.base_model,
                                                                    max_length=data_args.max_seq_len,
                                                                    device=training_args.device)
-
-        # TODO test if this is still necessary.
-        if model_args.long_input_bert_type in [LongInputBertType.LONG, LongInputBertType.HIERARCHICAL]:
-            if last_checkpoint or not training_args.do_train:
-                # Make sure we really load all the weights after we modified the models
-                load_model(model, model_args.model_name_or_path)
 
         if model_args.train_type == TrainType.ADAPTERS:
             # Setup adapters
