@@ -194,6 +194,12 @@ class DataArguments:
             "help": "Whether to test on the sub datasets or not."
         },
     )
+    log_all_predictions: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to log the individual predictions on the train set and eval set as well."
+        },
+    )
     problem_type: ProblemType = field(
         default=ProblemType.SINGLE_LABEL_CLASSIFICATION,
         metadata={

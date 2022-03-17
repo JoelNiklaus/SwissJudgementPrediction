@@ -535,7 +535,7 @@ def main():
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
-            remove_columns=dataset.column_names,
+            remove_columns=[col for col in dataset.column_names if not col == "id"],  # keep id for example-wise logging
         )
 
     if training_args.do_train:
@@ -721,9 +721,9 @@ def main():
         for n, v in best_trial.hyperparameters.items():
             setattr(trainer.args, n, v)
 
-    def predict(predict_dataset):
-        preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix="test")
-        remove_metrics(metrics, 'test')
+    def predict(predict_dataset, prefix="test"):
+        preds, labels, metrics = trainer.predict(predict_dataset, metric_key_prefix=prefix)
+        remove_metrics(metrics, prefix)
 
         preds, labels, probs = process_results(preds, labels)
         return preds, labels, probs, metrics
@@ -740,11 +740,12 @@ def main():
         if data_args.problem_type == ProblemType.SINGLE_LABEL_CLASSIFICATION:
             return label_dict["id2label"][pred]
 
-    def write_reports(base_dir, preds, labels, probs, wandb_prefix):
+    def write_reports(base_dir, ids, preds, labels, probs, wandb_prefix, split):
+        assert len(ids) == len(preds) == len(labels) == len(probs)
         if trainer.is_world_process_zero():
             correct_confidences, incorrect_confidences = [], []
             # write predictions to csv
-            result = {"index": [], "prediction": [], "label": [], "is_correct": [], "confidence": [], "error": []}
+            result = {"id": [], "prediction": [], "label": [], "is_correct": [], "confidence": [], "error": []}
             for index, pred in enumerate(preds):
                 confidence = probs[index][pred]
                 is_correct = pred == labels[index]
@@ -753,16 +754,16 @@ def main():
                     correct_confidences.append(confidence)
                 else:
                     incorrect_confidences.append(confidence)
-                result['index'].append(index)
+                result['id'].append(ids[index])
                 result['prediction'].append(pred2label(pred))
                 result['label'].append(pred2label(labels[index]))
                 result['is_correct'].append(is_correct)
                 result['confidence'].append(confidence)
                 result['error'].append(error)
-            pd.DataFrame.from_dict(result).to_csv(f'{base_dir}/predictions.csv')
+            pd.DataFrame.from_dict(result).to_csv(f'{base_dir}/predictions_{split}.csv')
 
             # IMPORTANT: These confidences are misleading!
-            # Use calibration to get better confidences: https://towardsdatascience.com/neural-network-calibration-using-pytorch-c44b7221a61
+            # TODO Use calibration to get better confidences: https://towardsdatascience.com/neural-network-calibration-using-pytorch-c44b7221a61
             # write confidences to csv
             confidences = {"correct": {"mean": np.mean(correct_confidences), "std": np.std(correct_confidences)},
                            "incorrect": {"mean": np.mean(incorrect_confidences), "std": np.std(incorrect_confidences)}}
@@ -826,6 +827,11 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
+        if data_args.log_all_predictions:
+            # This can be used to get detailed insight into specific predictions
+            preds, labels, probs, metrics = predict(train_dataset)
+            write_reports(training_args.output_dir, train_dataset["id"], preds, labels, probs, "train", "train")
+
     # load model ourselves because save_pretrained/load_pretrained might not work well for our hacked models
     # load_model(trainer.model, training_args.output_dir)
 
@@ -840,6 +846,11 @@ def main():
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
+        if data_args.log_all_predictions:
+            # This can be used to get detailed insight into specific predictions
+            preds, labels, probs, metrics = predict(eval_dataset)
+            write_reports(training_args.output_dir, eval_dataset["id"], preds, labels, probs, "eval", "eval")
 
     base_output_dir = Path(training_args.output_dir)  # save it here because we overwrite it
     if training_args.do_predict and not data_args.tune_hyperparams:
@@ -867,7 +878,7 @@ def main():
                 # if "mem" not in k and k != "test_samples"}
                 wandb.log(metrics)  # log test metrics to wandb
 
-            write_reports(training_args.output_dir, preds, labels, probs, prefix)
+            write_reports(training_args.output_dir, predict_dataset["id"], preds, labels, probs, prefix, "test")
 
     if data_args.test_on_sub_datasets:
         logger.info("*** Sub-Datasets ***")
@@ -884,7 +895,7 @@ def main():
                             metrics = {k.replace("test_", prefix): v for k, v in metrics.items()}
                             metrics[f'{prefix}support'] = dataset.num_rows
                             wandb.log(metrics)  # log test metrics to wandb
-                        write_reports(training_args.output_dir, preds, labels, probs, prefix)
+                        write_reports(training_args.output_dir, dataset["id"], preds, labels, probs, prefix, "test")
 
     if training_args.push_to_hub:
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": finetuning_task}

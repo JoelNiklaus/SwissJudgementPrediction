@@ -97,7 +97,7 @@ elif [[ "$MODEL_TYPE" == "long" ]]; then
   else
     BATCH_SIZE=2
   fi
-else # either 'hierarchical', 'efficient' or 'longformer'
+else # either 'hierarchical' or 'efficient'
   BATCH_SIZE=4
 fi
 if [[ "$MODEL_NAME" =~ distilbert ]]; then
@@ -167,6 +167,8 @@ CMD="python run_tc.py
   --max_seg_len $MAX_SEG_LEN
   --data_augmentation_type $DATA_AUGMENTATION_TYPE
   --jurisdiction switzerland
+  --use_pretrained_model True
+  --log_all_predictions True
   --num_train_epochs $NUM_EPOCHS
   --load_best_model_at_end
   --metric_for_best_model eval_f1_macro
