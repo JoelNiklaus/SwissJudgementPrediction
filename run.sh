@@ -20,6 +20,9 @@ while [ $# -gt 0 ]; do
   --test_languages=*)
     TEST_LANGUAGES="${1#*=}" # one of 'de', 'fr', 'it', 'en'
     ;;
+  --jurisdiction=*)
+    JURISDICTION="${1#*=}" # one of 'switzerland', 'india', 'both'
+    ;;
   --data_augmentation_type=*)
     DATA_AUGMENTATION_TYPE="${1#*=}" # one of 'no_augmentation', 'translation' or 'back_translation'
     ;;
@@ -166,7 +169,7 @@ CMD="python run_tc.py
   --max_segments $MAX_SEGMENTS
   --max_seg_len $MAX_SEG_LEN
   --data_augmentation_type $DATA_AUGMENTATION_TYPE
-  --jurisdiction switzerland
+  --jurisdiction $JURISDICTION
   --use_pretrained_model True
   --log_all_predictions True
   --num_train_epochs $NUM_EPOCHS

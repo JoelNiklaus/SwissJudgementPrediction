@@ -180,7 +180,7 @@ class DataArguments:
         default=DataAugmentationType.NO_AUGMENTATION, metadata={"help": "What type of data augmentation to use"},
     )
     jurisdiction: Jurisdiction = field(
-        default=Jurisdiction.SWITZERLAND, metadata={"help": "Which jurisdiction to include data from"},
+        default=Jurisdiction.SWITZERLAND, metadata={"help": "Which jurisdiction to include data from for training"},
     )
     train_sub_datasets: Optional[str] = field(
         default=None,
