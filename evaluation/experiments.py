@@ -46,12 +46,13 @@ class ZeroShotCrossLingualExperiment(Experiment):
 
 
 class CrossDomainExperiment(Experiment):
-    show_min = False
+    train_types = [TrainType.FINETUNE, TrainType.ADAPTERS]
     data_augmentation_types = [DataAugmentationType.TRANSLATION, DataAugmentationType.NO_AUGMENTATION]
     train_langs = ['de,fr,it', 'de', 'fr', 'it']
     show_lang_aggs = False
     show_sub_dataset_instance_aggs = True
     use_support_weighted_average = True
+    show_min = False
 
 
 class CrossDomainLegalAreasExperiment(CrossDomainExperiment):

@@ -227,32 +227,37 @@ def fill_table(df, experiment):
                     for data_augmentation_type in experiment.data_augmentation_types:
                         filter = lambda x: x['data_args']['data_augmentation_type'] == data_augmentation_type
                         da_df = lang_df[lang_df.config.apply(filter)]  # create data_augmentation_df
+                        if len(da_df.index) == 0: continue
 
                         for train_sub_dataset in experiment.train_sub_datasets:
                             filter = lambda x: x['data_args']['train_sub_datasets'] == train_sub_dataset
                             tsd_df = da_df[da_df.config.apply(filter)]  # create train_sub_datasets_df
+                            if len(tsd_df.index) == 0: continue
 
                             for jurisdiction in experiment.jurisdictions:
                                 filter = lambda x: x['data_args']['jurisdiction'] == jurisdiction
                                 j_df = tsd_df[tsd_df.config.apply(filter)]  # create jurisdiction_df
+                                if len(j_df.index) == 0: continue
 
-                                if len(j_df.index) > 0:
-                                    # if this fails, there might be some failed/crashed runs which need to be deleted
-                                    assert len(j_df.index) == experiment.num_random_seeds
+                                filter = lambda x: x['training_args']['learning_rate'] == 0.00005
+                                j_df = j_df[j_df.config.apply(filter)]  # filter more
 
-                                    row_name = f"{display_names[model]} " \
-                                               f"{display_names[train_type]} "
-                                    # if only trained on one language call it "mono", if trained on several call it "multi"
-                                    row_name += f"mono " if len(train_lang) == 2 else "multi "
-                                    row_name += f"{display_names[data_augmentation_type]} " if len(
-                                        experiment.data_augmentation_types) > 1 else ""
-                                    row_name += f"{display_names[train_sub_dataset]} " if len(
-                                        experiment.train_sub_datasets) > 1 else ""
-                                    row_name += f"{display_names[jurisdiction]} " if len(
-                                        experiment.jurisdictions) > 1 else ""
-                                    # add results per experiment row: merge dicts with same row name (e.g. NativeBERTs)
-                                    table[row_name] = {**(table[row_name] if row_name in table else {}),
-                                                       **(get_row(experiment, j_df))}
+                                # if this fails, there might be some failed/crashed runs which need to be deleted
+                                assert len(j_df.index) == experiment.num_random_seeds
+
+                                row_name = f"{display_names[model]} " \
+                                           f"{display_names[train_type]} "
+                                # if only trained on one language call it "mono", if trained on several call it "multi"
+                                row_name += f"mono " if len(train_lang) == 2 else "multi "
+                                row_name += f"{display_names[data_augmentation_type]} " if len(
+                                    experiment.data_augmentation_types) > 1 else ""
+                                row_name += f"{display_names[train_sub_dataset]} " if len(
+                                    experiment.train_sub_datasets) > 1 else ""
+                                row_name += f"{display_names[jurisdiction]} " if len(
+                                    experiment.jurisdictions) > 1 else ""
+                                # add results per experiment row: merge dicts with same row name (e.g. NativeBERTs)
+                                table[row_name] = {**(table[row_name] if row_name in table else {}),
+                                                   **(get_row(experiment, j_df))}
     return table
 
 
