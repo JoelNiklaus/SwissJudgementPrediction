@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --job-name="Data Augmentation"
-#SBATCH --mail-user=joel.niklaus@inf.unibe.ch
+###SBATCH --mail-user=
 #SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=15-00:00:00
+#SBATCH --time=00-00:01:00
 #SBATCH --mem=128GB
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:rtx3090:1
-#SBATCH --qos=job_gpu_stuermer
-#SBATCH --partition=gpu-invest
+#SBATCH --qos=job_gpu
+#SBATCH --partition=gpu
 
 # enable this when on gpu partition (and NOT on gpu-invest)
 ###SBATCH --qos=job_gpu_preempt
@@ -19,6 +19,7 @@
 # alternatively run multiprocess on 6 gtx1080ti gpus with qos job_gpu_preempt (further reduce batch size): only works with opus-mt model
 
 # Activate correct conda environment
+module load Anaconda3
 eval "$(conda shell.bash hook)"
 conda activate data_aug
 

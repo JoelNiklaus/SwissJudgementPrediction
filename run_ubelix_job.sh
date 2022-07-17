@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name="SJP"
-#SBATCH --mail-user=joel.niklaus@inf.unibe.ch
-#SBATCH --mail-type=end,fail
+#SBATCH --job-name="SJP_testrun"
+###SBATCH --mail-user=
+###SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem=64GB
+#SBATCH --mem=16GB
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:rtx3090:1
-#SBATCH --time=20-00:00:00
-#SBATCH --qos=job_gpu_stuermer
-#SBATCH --partition=gpu-invest
+#SBATCH --time=00-00:30:00
+#SBATCH --qos=job_gpu
+#SBATCH --partition=gpu
 #SBATCH --array=2-4
 
 # enable this for multiple GPUs for max 24h
@@ -18,20 +18,21 @@
 ###SBATCH --partition=gpu
 
 # enable this to get a time limit of 20 days
-###SBATCH --time=20-00:00:00
+###SBATCH --time=02-00:00:00
 ###SBATCH --qos=job_gpu_stuermer
 ###SBATCH --partition=gpu-invest
 
 # Activate correct conda environment
+module load Anaconda3
 eval "$(conda shell.bash hook)"
 conda activate sjp
 
 # Put your code below this line
 #           $1: train_type, $2: train_mode, $3: model_name, $4: model_type, $5: train_languages, $6: test_languages,$7: jurisdiction, $8: data_augmentation_type, $9: train_sub_datasets ${10}: sub_datasets
-bash run.sh --train_type=$1 --train_mode=$2 --model_name=$3 --model_type=$4 --train_languages=$5 --test_languages=$6 --jurisdiction=$7 --data_augmentation_type=$8 --train_sub_datasets=$9 --sub_datasets=${10} \
-  --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
+# Example: bash run.sh --train_type=$1 --train_mode=$2 --model_name=$3 --model_type=$4 --train_languages=$5 --test_languages=$6 --jurisdiction=$7 --data_augmentation_type=$8 --train_sub_datasets=$9 --sub_datasets=${10} \
+#  --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
 
-# Example: bash run.sh --train_type=adapters --train_mode=train --model_name=xlm-roberta-base --model_type=hierarchical --train_languages=it --test_languages=it --jurisdiction=switzerland --data_augmentation_type=no_augmentation --train_sub_datasets=civil_law --sub_datasets=False --seed=1 --debug=True
+bash run.sh --train_type=adapters --train_mode=train --model_name=xlm-roberta-base --model_type=hierarchical --train_languages=de --test_languages=de --jurisdiction=switzerland --data_augmentation_type=no_augmentation --train_sub_datasets=AI --sub_datasets=True --seed=1 --debug=False
 # Example: sbatch run_ubelix_job.sh adapters train xlm-roberta-base hierarchical de de switzerland no_augmentation civil_law False
 
 # IMPORTANT:

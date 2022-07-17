@@ -95,12 +95,12 @@ if __name__ == '__main__':
 
     source_langs = ['de', 'fr', 'it']
     target_lang = 'en'
-    translate(source_langs, target_lang, debug=debug)
+    ##translate(source_langs, target_lang, debug=debug)
 
-    source_lang = 'it'
+    source_lang = 'fr'
     corpus_langs = ['de', 'fr', 'it']
 
-    target_langs_basic = ['de', 'fr', 'en', 'es', 'pt', ]
+    target_langs_basic = ['es']
     opus_mt_langs = ['de', 'fr', 'es', 'en', 'he', 'ar', 'bg', 'ca', 'eo', 'is', 'lt', 'ms', 'uk', 'vi', ]
     m2m_100_langs = ['af', 'am', 'ar', 'ast', 'az', 'ba', 'be', 'bg', 'bn', 'br', 'bs', 'ca', 'ceb', 'cs', 'cy', 'da',
                      'de', 'el', 'en', 'es', 'et', 'fa', 'ff', 'fi', 'fr', 'fy', 'ga', 'gd', 'gl', 'gu', 'ha', 'he',
