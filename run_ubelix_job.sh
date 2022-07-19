@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name="SJP_testrun"
+#SBATCH --job-name="SJP_dates_normalized"
 ###SBATCH --mail-user=
 ###SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem=16GB
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:rtx3090:1
-#SBATCH --time=00-00:30:00
+#SBATCH --time=00-02:00:00
 #SBATCH --qos=job_gpu
 #SBATCH --partition=gpu
 #SBATCH --array=2-4
@@ -32,7 +32,7 @@ conda activate sjp
 # Example: bash run.sh --train_type=$1 --train_mode=$2 --model_name=$3 --model_type=$4 --train_languages=$5 --test_languages=$6 --jurisdiction=$7 --data_augmentation_type=$8 --train_sub_datasets=$9 --sub_datasets=${10} \
 #  --seed=${SLURM_ARRAY_TASK_ID} --debug=False >current-run.out
 
-bash run.sh --train_type=adapters --train_mode=train --model_name=xlm-roberta-base --model_type=hierarchical --train_languages=de --test_languages=de --jurisdiction=switzerland --data_augmentation_type=no_augmentation --train_sub_datasets=AI --sub_datasets=True --seed=1 --debug=False
+bash run.sh --train_type=finetune --train_mode=train --model_name=Musixmatch/umberto-commoncrawl-cased-v1 --model_type=hierarchical --train_languages=it --test_languages=it --jurisdiction=switzerland --data_augmentation_type=no_augmentation --train_sub_datasets=None --sub_datasets=False --seed=1 --debug=False
 # Example: sbatch run_ubelix_job.sh adapters train xlm-roberta-base hierarchical de de switzerland no_augmentation civil_law False
 
 # IMPORTANT:

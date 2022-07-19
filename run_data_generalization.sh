@@ -4,8 +4,8 @@
 #SBATCH --mail-type=end,fail
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=00-00:01:00
-#SBATCH --mem=32GB
+#SBATCH --time=00-01:00:00
+#SBATCH --mem=16GB
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:rtx3090:1
 #SBATCH --qos=job_gpu
