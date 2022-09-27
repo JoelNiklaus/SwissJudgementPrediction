@@ -3,6 +3,15 @@ In many jurisdictions, the excessive workload of courts leads to high delays. Su
 
 This repository provides code for experiments with the state-of-the-art in text classification to predict the judgements of Swiss court decisions
 
+## Get Started
+* Read the documentation of your HPC
+* Clone this repository into your $HOME folder
+* Find the .bashrc file in your $HOME folder and enter `module load CUDA`
+* Enter `module load Anaconda3` in the terminal, create a new environment called "sjp" and install packages using the env.yml file.
+* Enter the conda environment (using `eval "$(conda shell.bash hook)"`), activate the sjp environment and use the following command to install the right version of PyTorch: `pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113`
+* Create a second environment called "data_aug" (if you want to use data generalization / augmentation / translation techniques) and install the required packages following the imports of the "translator.py" file.
+* Create a Weights & Biases account, get your api token, and enter `wandb login` inside your conda environment. After you entered the token, it will be saved in the .netrc file in you $HOME folder.
+
 ## Dataset
 The data is available on Zenodo (https://zenodo.org/record/5529712) and HuggingFace Datasets (http://huggingface.co/datasets/swiss_judgment_prediction). 
 
