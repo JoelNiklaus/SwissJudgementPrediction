@@ -7,14 +7,23 @@ This repository provides code for experiments with the state-of-the-art in text 
 The data is available on Zenodo (https://zenodo.org/record/5529712) and HuggingFace Datasets (http://huggingface.co/datasets/swiss_judgment_prediction). 
 
 ## Paper
-ArXiv pre-print is available here: http://arxiv.org/abs/2110.00806
-You can cite it as follows: 
+ArXiv pre-prints are available here: http://arxiv.org/abs/2110.00806, https://arxiv.org/abs/2209.12325
+You can cite them as follows: 
 
     @misc{niklaus2021swissjudgmentprediction,
         title={Swiss-Judgment-Prediction: A Multilingual Legal Judgment Prediction Benchmark},
         author={Joel Niklaus and Ilias Chalkidis and Matthias Stürmer},
         year={2021},
         eprint={2110.00806},
+        archivePrefix={arXiv},
+        primaryClass={cs.CL}
+    }
+
+    @misc{niklaus2022empirical,
+        title={An Empirical Study on Cross-X Transfer for Legal Judgment Prediction},
+        author={Joel Niklaus and Matthias Stürmer and Ilias Chalkidis},
+        year={2022},
+        eprint={2209.12325},
         archivePrefix={arXiv},
         primaryClass={cs.CL}
     }
