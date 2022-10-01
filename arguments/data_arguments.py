@@ -23,6 +23,11 @@ class DataAugmentationType(str, ExplicitEnum):
     NO_AUGMENTATION = "no_augmentation"
 
 
+class DataGeneralizationType(str, ExplicitEnum):
+    DATE_NORMALIZATION = "date_normalization"
+    NO_GENERALIZATION = "no_generalization"
+
+
 class SubDataset(ExplicitEnum):
     """Only legal area and origin canton make sense for training"""
 
