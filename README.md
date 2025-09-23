@@ -22,7 +22,7 @@ _UBELIX is a centOS based high-performance computing cluster_
 
 
 ## Dataset
-The data is available on Zenodo (https://zenodo.org/record/5529712) and HuggingFace Datasets (http://huggingface.co/datasets/swiss_judgment_prediction). 
+The data is available on Zenodo (https://zenodo.org/record/5529712) and HuggingFace Datasets ([http://huggingface.co/datasets/swiss_judgment_prediction](https://huggingface.co/datasets/rcds/swiss_judgment_prediction)). 
 
 ## Paper
 ArXiv pre-prints are available here: http://arxiv.org/abs/2110.00806, https://arxiv.org/abs/2209.12325.
